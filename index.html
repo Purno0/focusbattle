@@ -1,0 +1,1601 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FocusBattle — Gamified Focus Arena</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23B8F03E' d='M13 2 3 14h7l-1 8 10-12h-7l1-8Z'/%3E%3C/svg%3E">
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Tailwind (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+<style>
+/* ============================================================
+   THEME TOKENS
+============================================================ */
+:root, [data-theme="dark"]{
+  --bg:#0B0D0C; --bg-trans:rgba(11,13,12,.86);
+  --surface:#121513; --surface2:#181D1A;
+  --border:rgba(255,255,255,.08); --track:rgba(255,255,255,.08);
+  --tick:rgba(255,255,255,.12); --muted:#39423B;
+  --text:#E9EDE8; --dim:#8E9A91;
+  --accent:#B8F03E; --accent-ink:#131A03; --accent-soft:rgba(184,240,62,.16);
+  --gold:#F2B84B; --gold-soft:rgba(242,184,75,.16);
+  --danger:#F26D5B; --danger-soft:rgba(242,109,91,.14);
+  --teal:#6FD3BC;
+  --dot:rgba(255,255,255,.035);
+  --shadow:0 14px 40px rgba(0,0,0,.4);
+}
+[data-theme="light"]{
+  --bg:#F1F3EC; --bg-trans:rgba(241,243,236,.88);
+  --surface:#FFFFFF; --surface2:#F6F8F1;
+  --border:rgba(22,32,20,.1); --track:rgba(22,32,20,.08);
+  --tick:rgba(22,32,20,.16); --muted:#C7D1C4;
+  --text:#1A201A; --dim:#68736A;
+  --accent:#4E8D0B; --accent-ink:#FFFFFF; --accent-soft:rgba(78,141,11,.14);
+  --gold:#C08A17; --gold-soft:rgba(192,138,23,.15);
+  --danger:#D14A38; --danger-soft:rgba(209,74,56,.12);
+  --teal:#2E9B82;
+  --dot:rgba(22,32,20,.05);
+  --shadow:0 14px 40px rgba(30,40,25,.12);
+}
+
+/* ============================================================
+   BASE
+============================================================ */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Space Grotesk',sans-serif;
+  min-height:100vh; transition:background-color .25s ease,color .25s ease;
+}
+/* subtle dot-grid texture */
+body::before{
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background-image:radial-gradient(var(--dot) 1px, transparent 1px);
+  background-size:26px 26px;
+}
+::selection{background:var(--accent); color:var(--accent-ink)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--muted);border-radius:99px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+p{margin:0}
+
+svg.lucide{width:18px;height:18px}
+
+/* ============================================================
+   SIDEBAR / TOPBAR
+============================================================ */
+#sidebar{
+  position:fixed; left:0; top:0; bottom:0; width:264px; z-index:60;
+  background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; padding:1.4rem 1rem;
+  transition:transform .3s ease, background-color .25s ease;
+}
+.sb-logo{display:flex;align-items:center;gap:.7rem;padding:0 .4rem 1.3rem}
+.logo-mark{
+  width:40px;height:40px;border-radius:12px;background:var(--accent);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.logo-mark svg{width:20px;height:20px}
+.logo-name{font-family:'Chakra Petch';font-weight:700;font-size:1.05rem;letter-spacing:.06em}
+.logo-name span{color:var(--accent)}
+.logo-sub{font-size:.7rem;color:var(--dim)}
+.sb-nav{display:flex;flex-direction:column;gap:.25rem;flex:1}
+.nav-item{
+  position:relative;display:flex;align-items:center;gap:.75rem;
+  padding:.68rem .85rem;border-radius:10px;border:none;background:transparent;
+  color:var(--dim);font-family:'Chakra Petch';font-weight:600;font-size:.86rem;
+  letter-spacing:.04em;cursor:pointer;transition:.18s;text-align:left;
+}
+.nav-item svg{width:18px;height:18px}
+.nav-item:hover{color:var(--text);background:var(--surface2)}
+.nav-item.active{color:var(--text);background:var(--surface2)}
+.nav-item.active::before{
+  content:'';position:absolute;left:0;top:22%;bottom:22%;width:3px;
+  background:var(--accent);border-radius:0 3px 3px 0;
+}
+.sb-foot{margin-top:auto;display:flex;flex-direction:column;gap:.6rem}
+.sb-level{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:12px;padding:.85rem .9rem;
+}
+.sb-level .overline{font-size:.62rem}
+.sb-level-num{font-family:'Chakra Petch';font-weight:700;font-size:1.15rem;color:var(--accent)}
+.sb-xp{font-size:.72rem;color:var(--dim);margin-top:.45rem;font-variant-numeric:tabular-nums}
+
+.icon-btn{
+  width:38px;height:38px;border-radius:10px;border:1px solid var(--border);
+  background:transparent;color:var(--text);display:flex;align-items:center;
+  justify-content:center;cursor:pointer;transition:.18s;flex-shrink:0;
+}
+.icon-btn:hover{background:var(--surface2);border-color:var(--dim)}
+
+#sidebarOverlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:55;
+  opacity:0;pointer-events:none;transition:opacity .3s;
+}
+#sidebarOverlay.show{opacity:1;pointer-events:auto}
+
+#topbar{
+  display:none;position:sticky;top:0;z-index:50;align-items:center;
+  justify-content:space-between;padding:.7rem 1rem;
+  background:var(--bg-trans);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);
+}
+.topbar-brand{font-family:'Chakra Petch';font-weight:700;letter-spacing:.08em}
+.topbar-brand span{color:var(--accent)}
+
+main{position:relative;z-index:1;padding:2rem 1.5rem 4.5rem}
+@media(min-width:1024px){ main{margin-left:264px} }
+.view{display:none;max-width:1080px;margin:0 auto}
+.view.active{display:block;animation:viewIn .3s ease}
+@keyframes viewIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+@media(max-width:1023px){
+  #topbar{display:flex}
+  main{padding:1.2rem 1rem 3.5rem}
+  #sidebar{transform:translateX(-105%)}
+  #sidebar.open{transform:translateX(0)}
+}
+
+/* ============================================================
+   COMPONENTS
+============================================================ */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+.hud-card{position:relative}
+.hud-card::before,.hud-card::after{
+  content:'';position:absolute;width:22px;height:22px;
+  border:2px solid var(--accent);opacity:.65;pointer-events:none;
+}
+.hud-card::before{top:-2px;left:-2px;border-right:none;border-bottom:none;border-top-left-radius:16px}
+.hud-card::after{bottom:-2px;right:-2px;border-left:none;border-top:none;border-bottom-right-radius:16px}
+
+.overline{
+  font-family:'Chakra Petch';font-size:.68rem;font-weight:600;
+  letter-spacing:.22em;text-transform:uppercase;color:var(--accent);
+}
+.overline::before{
+  content:'';display:inline-block;width:14px;height:2px;
+  background:var(--accent);margin-right:.5rem;vertical-align:middle;
+}
+.overline.danger-text{color:var(--danger)}
+.overline.danger-text::before{background:var(--danger)}
+.view-title{font-family:'Chakra Petch';font-weight:700;font-size:1.6rem;margin-top:.3rem}
+.hero-title{font-family:'Chakra Petch';font-weight:700;font-size:clamp(1.65rem,4vw,2.35rem);line-height:1.12;margin-top:.55rem}
+.hero-date{color:var(--dim);margin-top:.35rem;font-size:.92rem}
+.hint{color:var(--dim);font-size:.8rem}
+.link{
+  display:inline-flex;align-items:center;gap:.3rem;color:var(--dim);
+  font-size:.8rem;font-weight:600;cursor:pointer;background:none;border:none;
+  font-family:'Chakra Petch';letter-spacing:.04em;transition:.15s;
+}
+.link:hover{color:var(--accent)}
+.link svg{width:14px;height:14px}
+
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
+  font-family:'Chakra Petch';font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;font-size:.82rem;border-radius:11px;
+  padding:.7rem 1.2rem;cursor:pointer;border:1px solid transparent;
+  transition:.18s;white-space:nowrap;
+}
+.btn svg{width:16px;height:16px}
+.btn-primary{background:var(--accent);color:var(--accent-ink)}
+.btn-primary:hover{filter:brightness(1.07);transform:translateY(-1px)}
+.btn-primary:active{transform:none}
+.btn-ghost{border-color:var(--border);color:var(--text);background:transparent}
+.btn-ghost:hover{border-color:var(--dim)}
+.btn-danger{border-color:var(--danger);color:var(--danger);background:transparent}
+.btn-danger:hover{background:var(--danger);color:#fff}
+.btn:disabled{opacity:.35;cursor:not-allowed;transform:none;filter:none}
+.btn-lg{padding:.95rem 1.7rem;font-size:.92rem;border-radius:13px}
+.btn-wide{min-width:200px}
+.pulse{animation:pulseBtn .5s ease 2}
+@keyframes pulseBtn{50%{transform:scale(1.06)}}
+
+.bar{height:8px;background:var(--track);border-radius:99px;overflow:hidden;flex-shrink:1}
+.bar-fill{height:100%;background:var(--accent);border-radius:99px;width:0%;transition:width .6s cubic-bezier(.2,.7,.3,1)}
+.bar-fill.gold{background:var(--gold)}
+.bar-fill.dimfill{background:var(--muted)}
+
+.chip{
+  display:inline-flex;align-items:center;gap:.3rem;flex-shrink:0;
+  font-family:'Chakra Petch';font-size:.66rem;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;
+  color:var(--accent);border:1px solid var(--accent-soft);
+  background:var(--accent-soft);border-radius:7px;padding:.28rem .55rem;
+}
+.chip svg{width:12px;height:12px}
+.chip-gold{color:var(--gold);border-color:var(--gold-soft);background:var(--gold-soft)}
+
+.strip{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border);padding:1px;border-radius:16px;overflow:hidden}
+@media(min-width:1024px){.strip.cols-4{grid-template-columns:repeat(4,1fr)}.strip.cols-3{grid-template-columns:repeat(3,1fr)}}
+.strip-cell{background:var(--surface);padding:1.05rem 1.25rem;display:flex;gap:.9rem;align-items:center}
+.strip-ic{
+  width:38px;height:38px;border-radius:11px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--accent-soft);color:var(--accent);
+}
+.strip-ic svg{width:19px;height:19px}
+.strip-ic.gold{background:var(--gold-soft);color:var(--gold)}
+.strip-num{font-family:'Chakra Petch';font-weight:700;font-size:1.35rem;font-variant-numeric:tabular-nums;line-height:1.1}
+.strip-lab{font-size:.72rem;color:var(--dim)}
+
+/* rings */
+.ring-wrap{position:relative;width:min(300px,78vw);aspect-ratio:1}
+.timer-svg,.dash-svg,.level-svg{width:100%;height:100%;display:block}
+.ring-track{fill:none;stroke:var(--track);stroke-width:8}
+.ring-fill{
+  fill:none;stroke:var(--accent);stroke-width:8;stroke-linecap:round;
+  stroke-dasharray:816.8;transition:stroke-dashoffset .25s linear;
+}
+.ring-fill.break{stroke:var(--teal)}
+.timer-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.2rem}
+.timer-time{
+  font-family:'Chakra Petch';font-weight:600;font-size:clamp(3.2rem,13vw,5rem);
+  line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.02em;
+}
+.dash-ring-wrap{position:relative;width:150px;height:150px;flex-shrink:0}
+.ring-track-sm{fill:none;stroke:var(--track);stroke-width:8}
+.ring-fill-sm{fill:none;stroke:var(--accent);stroke-width:8;stroke-linecap:round;stroke-dasharray:389.6;transition:stroke-dashoffset .6s ease}
+.ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring-center b{font-family:'Chakra Petch';font-weight:700;font-size:2.1rem;line-height:1;color:var(--accent)}
+.ring-center i{font-style:normal;font-family:'Chakra Petch';font-size:.58rem;letter-spacing:.24em;color:var(--dim);margin-top:.2rem}
+
+/* timer page */
+.timer-hint{color:var(--dim);font-size:.85rem;margin-top:.4rem;text-align:center}
+.mode-tabs{display:flex;gap:.4rem;background:var(--surface2);border:1px solid var(--border);padding:.35rem;border-radius:14px}
+.mode-tab{
+  display:flex;flex-direction:column;align-items:center;gap:.1rem;
+  padding:.5rem 1.15rem;border-radius:10px;border:none;background:transparent;
+  color:var(--dim);font-family:'Chakra Petch';font-weight:600;font-size:.78rem;
+  letter-spacing:.05em;text-transform:uppercase;cursor:pointer;transition:.18s;
+}
+.mode-tab em{font-style:normal;font-size:.62rem;opacity:.75;font-variant-numeric:tabular-nums;text-transform:none;letter-spacing:0}
+.mode-tab.active{background:var(--accent);color:var(--accent-ink)}
+.cycle-dots{display:flex;gap:.5rem}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--track);border:1px solid var(--border)}
+.dot.on{background:var(--accent);border-color:var(--accent)}
+
+/* challenges */
+.mini-ch{
+  display:flex;align-items:center;gap:.8rem;padding:.72rem .85rem;
+  border:1px solid var(--border);border-radius:12px;background:var(--surface2);
+}
+.mini-ch.is-done{opacity:.7}
+.mc-ic{
+  width:34px;height:34px;border-radius:9px;background:var(--accent-soft);
+  color:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.mc-ic svg{width:16px;height:16px}
+.mc-name{font-weight:600;font-size:.88rem}
+.mc-count{font-size:.72rem;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ch-row{transition:.2s}
+.ch-row.is-done{border-color:var(--gold-soft)}
+.ch-ic{
+  width:48px;height:48px;border-radius:13px;background:var(--accent-soft);
+  color:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.ch-ic svg{width:22px;height:22px}
+.ch-ic.gold{background:var(--gold-soft);color:var(--gold)}
+.ch-name{font-family:'Chakra Petch';font-weight:600;font-size:1.02rem}
+.ch-desc{font-size:.84rem;color:var(--dim);margin-top:.15rem}
+.ch-count{font-size:.75rem;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:82px;text-align:right}
+
+/* achievements */
+.ach{
+  display:flex;gap:1rem;align-items:flex-start;padding:1.1rem;
+  border:1px solid var(--border);border-radius:14px;background:var(--surface);
+}
+.ach.unlocked{border-color:var(--gold-soft);background:var(--surface2)}
+.ach-ic{
+  width:44px;height:44px;border-radius:12px;display:flex;align-items:center;
+  justify-content:center;background:var(--surface2);border:1px solid var(--border);
+  color:var(--dim);flex-shrink:0;
+}
+.ach-ic svg{width:20px;height:20px}
+.ach.unlocked .ach-ic{background:var(--gold-soft);border-color:var(--gold-soft);color:var(--gold)}
+.ach-name{font-family:'Chakra Petch';font-weight:600;font-size:.95rem}
+.ach.unlocked .ach-name{color:var(--gold)}
+.ach-desc{font-size:.8rem;color:var(--dim);margin-top:.1rem}
+.ach-prog{font-size:.72rem;color:var(--dim);font-variant-numeric:tabular-nums;display:block;margin-top:.3rem}
+.ach-date{font-size:.72rem;color:var(--gold);display:block;margin-top:.35rem}
+.ach-state{
+  font-family:'Chakra Petch';font-size:.6rem;font-weight:600;letter-spacing:.14em;
+  padding:.28rem .5rem;border-radius:6px;border:1px solid var(--border);
+  color:var(--dim);white-space:nowrap;flex-shrink:0;
+}
+.ach.unlocked .ach-state{color:var(--gold);border-color:var(--gold-soft)}
+
+/* stats */
+.hist-row{display:flex;align-items:center;gap:.8rem;padding:.72rem 0;border-bottom:1px solid var(--border)}
+.hist-row:last-child{border-bottom:none}
+.hist-ic{
+  width:32px;height:32px;border-radius:9px;background:var(--surface2);
+  border:1px solid var(--border);color:var(--dim);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.hist-ic svg{width:15px;height:15px}
+.hist-xp{color:var(--accent);font-weight:600;font-size:.86rem;font-variant-numeric:tabular-nums}
+.hist-time{font-size:.72rem;color:var(--dim)}
+.chart{display:grid;grid-template-columns:repeat(7,1fr);gap:.5rem;align-items:end}
+.chart-col{display:flex;flex-direction:column;align-items:center;gap:.4rem}
+.chart-val{font-size:.68rem;color:var(--dim);font-variant-numeric:tabular-nums}
+.chart-track{height:132px;width:100%;max-width:40px;display:flex;align-items:flex-end;background:var(--track);border-radius:8px;overflow:hidden}
+.chart-bar{width:100%;background:var(--accent);opacity:.4;transition:height .5s ease}
+.chart-col.today .chart-bar{opacity:1}
+.chart-col.today .chart-val{color:var(--accent);font-weight:700}
+.chart-day{font-size:.68rem;color:var(--dim)}
+
+/* activity + empty */
+.act{display:flex;gap:.7rem;align-items:flex-start}
+.act-ic{
+  width:30px;height:30px;border-radius:8px;background:var(--surface2);
+  border:1px solid var(--border);color:var(--dim);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.act-ic svg{width:14px;height:14px}
+.act-ic.accent{color:var(--accent);border-color:var(--accent-soft);background:var(--accent-soft)}
+.act-ic.gold{color:var(--gold);border-color:var(--gold-soft);background:var(--gold-soft)}
+.act-text{font-size:.85rem;font-weight:500;line-height:1.35}
+.act-time{font-size:.72rem;color:var(--dim);margin-top:.1rem}
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:1.6rem .5rem;color:var(--dim)}
+.empty svg{width:26px;height:26px;margin-bottom:.5rem;opacity:.7}
+.empty p{font-weight:600;color:var(--text);font-size:.9rem}
+.empty span{font-size:.78rem;margin-top:.25rem;max-width:260px}
+
+/* settings */
+.set-row{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.95rem 0;border-bottom:1px solid var(--border)}
+.set-row:last-child{border-bottom:none}
+.set-name{font-weight:600;font-size:.92rem}
+.set-hint{font-size:.74rem;color:var(--dim);margin-top:.1rem}
+.stepper{display:flex;align-items:center;gap:.4rem;flex-shrink:0}
+.stepper input{
+  width:64px;text-align:center;background:var(--surface2);border:1px solid var(--border);
+  border-radius:9px;padding:.5rem .3rem;color:var(--text);
+  font-family:'Chakra Petch';font-weight:600;outline:none;transition:.15s;
+}
+.stepper input:focus{border-color:var(--accent)}
+input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+input[type=number]{-moz-appearance:textfield;appearance:textfield}
+.step-btn{
+  width:32px;height:38px;border-radius:9px;border:1px solid var(--border);
+  background:var(--surface2);color:var(--text);font-size:1.05rem;font-weight:600;
+  cursor:pointer;transition:.15s;
+}
+.step-btn:hover{border-color:var(--accent);color:var(--accent)}
+.seg{display:flex;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface2)}
+.seg-btn{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:.45rem;
+  padding:.65rem;border:none;background:transparent;cursor:pointer;
+  font-family:'Chakra Petch';font-weight:600;font-size:.78rem;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--dim);transition:.18s;
+}
+.seg-btn svg{width:15px;height:15px}
+.seg-btn.active{background:var(--accent);color:var(--accent-ink)}
+.switch{position:relative;width:46px;height:26px;flex-shrink:0}
+.switch input{position:absolute;opacity:0;inset:0;cursor:pointer;z-index:1;margin:0;width:100%;height:100%}
+.switch-track{position:absolute;inset:0;background:var(--track);border:1px solid var(--border);border-radius:99px;transition:.2s;pointer-events:none}
+.switch-track::after{
+  content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;
+  border-radius:50%;background:var(--dim);transition:.2s;
+}
+.switch input:checked ~ .switch-track{background:var(--accent);border-color:var(--accent)}
+.switch input:checked ~ .switch-track::after{left:23px;background:var(--accent-ink)}
+.danger-zone{border-color:var(--danger-soft)}
+
+/* toasts */
+#toasts{
+  position:fixed;top:1rem;right:1rem;z-index:80;display:flex;
+  flex-direction:column;gap:.5rem;max-width:min(370px,calc(100vw - 2rem));
+}
+.toast{
+  display:flex;gap:.65rem;align-items:center;background:var(--surface2);
+  border:1px solid var(--border);border-left:3px solid var(--accent);
+  border-radius:12px;padding:.72rem .95rem;box-shadow:var(--shadow);
+  animation:toastIn .3s cubic-bezier(.2,.9,.3,1.2);
+}
+.toast.gold{border-left-color:var(--gold)}
+.toast.gold .toast-ic{color:var(--gold)}
+.toast-ic{color:var(--accent);display:flex;flex-shrink:0}
+.toast-ic svg{width:16px;height:16px}
+.toast p{font-size:.84rem;font-weight:500;line-height:1.35}
+.toast.out{animation:toastOut .3s forwards}
+@keyframes toastIn{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}
+@keyframes toastOut{to{transform:translateX(24px);opacity:0}}
+@media(max-width:640px){#toasts{left:1rem;right:1rem}}
+
+/* modals */
+.modal-backdrop{
+  position:fixed;inset:0;z-index:90;background:rgba(5,8,6,.7);
+  backdrop-filter:blur(6px);display:flex;align-items:center;
+  justify-content:center;padding:1rem;
+}
+.modal-box{
+  background:var(--surface);border:1px solid var(--border);border-radius:20px;
+  padding:2rem 1.6rem;max-width:420px;width:100%;text-align:center;
+  box-shadow:var(--shadow);animation:popIn .32s cubic-bezier(.2,.9,.3,1.15);
+}
+@keyframes popIn{from{transform:scale(.88);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-ic{
+  width:52px;height:52px;border-radius:14px;margin:0 auto .9rem;
+  background:var(--danger-soft);color:var(--danger);
+  display:flex;align-items:center;justify-content:center;
+}
+.modal-ic svg{width:24px;height:24px}
+.level-stage{position:relative;width:180px;height:180px;margin:0 auto}
+.shards{position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;z-index:2}
+.shard{
+  position:absolute;width:5px;height:16px;border-radius:3px;background:var(--accent);
+  opacity:0;animation:shardFly .95s cubic-bezier(.15,.6,.4,1) forwards;
+}
+.shard.gold{background:var(--gold)}
+@keyframes shardFly{
+  0%{transform:translate(0,0) rotate(0deg);opacity:1}
+  100%{transform:translate(var(--tx),var(--ty)) rotate(var(--rd));opacity:0}
+}
+#levelRing{
+  fill:none;stroke:var(--accent);stroke-width:6;stroke-linecap:round;
+  stroke-dasharray:439.8;stroke-dashoffset:439.8;
+  animation:levelSweep 1.1s cubic-bezier(.3,.7,.3,1) forwards;
+}
+@keyframes levelSweep{to{stroke-dashoffset:0}}
+.level-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.level-center .overline{font-size:.58rem}
+.level-center::before{display:none}
+.level-center b{font-family:'Chakra Petch';font-weight:700;font-size:3rem;line-height:1;color:var(--accent)}
+.level-title{font-family:'Chakra Petch';font-weight:700;font-size:1.35rem;letter-spacing:.3em;margin-top:1.2rem;color:var(--accent)}
+.level-desc{color:var(--dim);font-size:.88rem;margin-top:.4rem}
+.level-note{font-size:.76rem;color:var(--dim);margin-top:.3rem;font-variant-numeric:tabular-nums}
+
+/* theme transition on common surfaces */
+body,.card,#sidebar,#topbar,.mode-tabs,.seg,.stepper input,.step-btn,.toast,.modal-box,.mini-ch,.ach,.strip-cell,.sb-level,.icon-btn{transition:background-color .25s ease,border-color .25s ease}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+</style>
+</head>
+
+<body class="font-body">
+
+<!-- ============ SIDEBAR ============ -->
+<aside id="sidebar" aria-label="Main navigation">
+  <div class="sb-logo">
+    <span class="logo-mark">
+      <svg viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" fill="var(--accent-ink)"/></svg>
+    </span>
+    <div>
+      <p class="logo-name">FOCUS<span>BATTLE</span></p>
+      <p class="logo-sub">Daily focus arena</p>
+    </div>
+  </div>
+
+  <nav class="sb-nav">
+    <button class="nav-item active" data-view="dashboard"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></button>
+    <button class="nav-item" data-view="timer"><i data-lucide="timer"></i><span>Focus Timer</span></button>
+    <button class="nav-item" data-view="challenges"><i data-lucide="target"></i><span>Challenges</span></button>
+    <button class="nav-item" data-view="achievements"><i data-lucide="trophy"></i><span>Achievements</span></button>
+    <button class="nav-item" data-view="statistics"><i data-lucide="bar-chart-3"></i><span>Statistics</span></button>
+    <button class="nav-item" data-view="settings"><i data-lucide="settings"></i><span>Settings</span></button>
+  </nav>
+
+  <div class="sb-foot">
+    <div class="sb-level">
+      <div class="flex items-center justify-between">
+        <span class="overline">Level</span>
+        <span id="sideLevel" class="sb-level-num">1</span>
+      </div>
+      <div class="bar mt-2"><div id="sideLevelBar" class="bar-fill" style="width:0%"></div></div>
+      <p id="sideXpText" class="sb-xp">0 / 500 XP</p>
+    </div>
+    <button id="themeToggleSide" class="icon-btn" aria-label="Toggle theme"><i data-lucide="sun"></i></button>
+  </div>
+</aside>
+<div id="sidebarOverlay"></div>
+
+<!-- ============ MOBILE TOPBAR ============ -->
+<header id="topbar">
+  <button id="menuBtn" class="icon-btn" aria-label="Open menu"><i data-lucide="menu"></i></button>
+  <p class="topbar-title font-display font-bold" id="topbarTitle">Dashboard</p>
+  <button id="themeToggleTop" class="icon-btn" aria-label="Toggle theme"><i data-lucide="sun"></i></button>
+</header>
+
+<main>
+  <!-- ============ DASHBOARD ============ -->
+  <section id="view-dashboard" class="view active">
+    <div class="card hud-card p-6 md:p-8">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+        <div class="min-w-0">
+          <p class="overline">Today's battle</p>
+          <h1 id="greetText" class="hero-title">Welcome back, challenger</h1>
+          <p id="greetDate" class="hero-date">—</p>
+          <div class="flex flex-wrap items-center gap-4 mt-7">
+            <button id="btnDashStart" class="btn btn-primary btn-lg">
+              <i data-lucide="play"></i><span>Start Focus Session</span>
+            </button>
+            <p class="hint"><span id="heroSessions">0</span> sessions · <span id="heroMinutes">0</span> min today</p>
+          </div>
+        </div>
+        <div class="mx-auto lg:mx-0 flex flex-col items-center">
+          <div class="dash-ring-wrap">
+            <svg viewBox="0 0 140 140" class="dash-svg">
+              <circle class="ring-track-sm" cx="70" cy="70" r="62"/>
+              <circle id="dashRing" class="ring-fill-sm" cx="70" cy="70" r="62" transform="rotate(-90 70 70)"/>
+            </svg>
+            <div class="ring-center"><b id="dashLevel">1</b><i>LEVEL</i></div>
+          </div>
+          <p id="dashXpText" class="text-sm font-semibold mt-3" style="font-variant-numeric:tabular-nums">0 / 500 XP</p>
+          <p id="dashNext" class="hint mt-0.5">500 XP to Level 2</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="strip cols-4 mt-6">
+      <div class="strip-cell">
+        <span class="strip-ic gold"><i data-lucide="flame"></i></span>
+        <div><p class="strip-num" id="dashStreakCur">0</p><p class="strip-lab">Day streak</p></div>
+      </div>
+      <div class="strip-cell">
+        <span class="strip-ic"><i data-lucide="calendar-days"></i></span>
+        <div><p class="strip-num" id="dashStreakLong">0</p><p class="strip-lab">Longest streak</p></div>
+      </div>
+      <div class="strip-cell">
+        <span class="strip-ic"><i data-lucide="list-checks"></i></span>
+        <div><p class="strip-num" id="dashTodaySessions">0</p><p class="strip-lab">Sessions today</p></div>
+      </div>
+      <div class="strip-cell">
+        <span class="strip-ic"><i data-lucide="hourglass"></i></span>
+        <div><p class="strip-num" id="dashTodayMinutes">0</p><p class="strip-lab">Minutes today</p></div>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-12 gap-6 mt-6">
+      <div class="card p-6 lg:col-span-7">
+        <div class="flex items-center justify-between gap-3">
+          <p class="overline">Daily challenges</p>
+          <button class="link" data-goto="challenges">View all<i data-lucide="arrow-right"></i></button>
+        </div>
+        <div id="dashChallenges" class="mt-4 space-y-3"></div>
+      </div>
+      <div class="card p-6 lg:col-span-5">
+        <p class="overline">Recent activity</p>
+        <div id="dashActivity" class="mt-4 space-y-4"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOCUS TIMER ============ -->
+  <section id="view-timer" class="view">
+    <div class="card hud-card p-6 md:p-10 flex flex-col items-center">
+      <p class="overline">Focus timer</p>
+      <p id="timerHint" class="timer-hint">Session 1 of 4 in this cycle — a long break follows the 4th.</p>
+
+      <div class="ring-wrap my-7">
+        <svg viewBox="0 0 320 320" class="timer-svg" aria-hidden="true">
+          <g id="timerTicks"></g>
+          <circle class="ring-track" cx="160" cy="160" r="130"/>
+          <circle id="timerRing" class="ring-fill" cx="160" cy="160" r="130" transform="rotate(-90 160 160)"/>
+        </svg>
+        <div class="timer-center">
+          <p id="timerModeLabel" class="overline">Focus</p>
+          <p id="timerTime" class="timer-time">25:00</p>
+        </div>
+      </div>
+
+      <div class="mode-tabs" role="tablist">
+        <button class="mode-tab active" data-mode="focus"><span>Focus</span><em id="tabFocus">25 min</em></button>
+        <button class="mode-tab" data-mode="short"><span>Short break</span><em id="tabShort">5 min</em></button>
+        <button class="mode-tab" data-mode="long"><span>Long break</span><em id="tabLong">15 min</em></button>
+      </div>
+
+      <div id="cycleDots" class="cycle-dots mt-5" aria-hidden="true"></div>
+
+      <div class="flex items-center gap-3 mt-7">
+        <button id="btnReset" class="btn btn-ghost"><i data-lucide="rotate-ccw"></i><span>Reset</span></button>
+        <button id="btnStartStop" class="btn btn-primary btn-lg btn-wide"><i data-lucide="play"></i><span>Start</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CHALLENGES ============ -->
+  <section id="view-challenges" class="view">
+    <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
+      <div>
+        <p class="overline">Challenges</p>
+        <h2 class="view-title">Daily challenges</h2>
+      </div>
+      <p class="hint" id="challengesResetNote">Resets daily</p>
+    </div>
+    <div id="challengesList" class="space-y-4"></div>
+  </section>
+
+  <!-- ============ ACHIEVEMENTS ============ -->
+  <section id="view-achievements" class="view">
+    <div class="flex flex-wrap items-end justify-between gap-4 mb-6">
+      <div>
+        <p class="overline">Achievements</p>
+        <h2 class="view-title">Trophy hall</h2>
+      </div>
+      <div class="w-full sm:w-56">
+        <div class="flex justify-between items-baseline">
+          <span class="overline" style="font-size:.6rem">Progress</span>
+          <span id="achSummary" class="hint" style="font-variant-numeric:tabular-nums">0 / 10</span>
+        </div>
+        <div class="bar mt-2"><div id="achBar" class="bar-fill gold" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div id="achGrid" class="grid md:grid-cols-2 gap-4"></div>
+  </section>
+
+  <!-- ============ STATISTICS ============ -->
+  <section id="view-statistics" class="view">
+    <div class="mb-6">
+      <p class="overline">Statistics</p>
+      <h2 class="view-title">Your record</h2>
+    </div>
+
+    <div class="strip cols-4">
+      <div class="strip-cell"><span class="strip-ic"><i data-lucide="list-checks"></i></span><div><p class="strip-num" id="statSessions">0</p><p class="strip-lab">Total sessions</p></div></div>
+      <div class="strip-cell"><span class="strip-ic"><i data-lucide="hourglass"></i></span><div><p class="strip-num" id="statMinutes">0</p><p class="strip-lab">Focus minutes</p></div></div>
+      <div class="strip-cell"><span class="strip-ic gold"><i data-lucide="coins"></i></span><div><p class="strip-num" id="statXP">0</p><p class="strip-lab">Total XP</p></div></div>
+      <div class="strip-cell"><span class="strip-ic"><i data-lucide="trending-up"></i></span><div><p class="strip-num" id="statLevel">1</p><p class="strip-lab">Current level</p></div></div>
+    </div>
+
+    <div class="strip cols-3 mt-4">
+      <div class="strip-cell"><span class="strip-ic gold"><i data-lucide="flame"></i></span><div><p class="strip-num" id="statStreakCur">0</p><p class="strip-lab">Current streak</p></div></div>
+      <div class="strip-cell"><span class="strip-ic"><i data-lucide="calendar-days"></i></span><div><p class="strip-num" id="statStreakLong">0</p><p class="strip-lab">Longest streak</p></div></div>
+      <div class="strip-cell"><span class="strip-ic gold"><i data-lucide="trophy"></i></span><div><p class="strip-num" id="statAch">0 / 10</p><p class="strip-lab">Achievements</p></div></div>
+    </div>
+
+    <div class="grid lg:grid-cols-12 gap-6 mt-6">
+      <div class="card p-6 lg:col-span-5">
+        <div class="flex justify-between items-baseline">
+          <p class="overline">Last 7 days</p>
+          <span class="hint">min / day</span>
+        </div>
+        <div id="chartBars" class="chart mt-5"></div>
+      </div>
+      <div class="card p-6 lg:col-span-7">
+        <p class="overline">Recent sessions</p>
+        <div id="historyList" class="mt-2"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section id="view-settings" class="view">
+    <div class="mb-6">
+      <p class="overline">Settings</p>
+      <h2 class="view-title">Tune your arena</h2>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6 items-start">
+      <div class="card p-6">
+        <p class="overline">Timer durations</p>
+        <div class="mt-2">
+          <div class="set-row">
+            <div><p class="set-name">Focus</p><p class="set-hint">5–120 min · earns 2 XP per minute</p></div>
+            <div class="stepper">
+              <button class="step-btn" data-target="focus" data-delta="-5" aria-label="Decrease focus duration">−</button>
+              <input id="inFocus" type="number" min="5" max="120" value="25" aria-label="Focus duration in minutes">
+              <button class="step-btn" data-target="focus" data-delta="5" aria-label="Increase focus duration">+</button>
+            </div>
+          </div>
+          <div class="set-row">
+            <div><p class="set-name">Short break</p><p class="set-hint">1–30 min</p></div>
+            <div class="stepper">
+              <button class="step-btn" data-target="short" data-delta="-1" aria-label="Decrease short break">−</button>
+              <input id="inShort" type="number" min="1" max="30" value="5" aria-label="Short break duration in minutes">
+              <button class="step-btn" data-target="short" data-delta="1" aria-label="Increase short break">+</button>
+            </div>
+          </div>
+          <div class="set-row">
+            <div><p class="set-name">Long break</p><p class="set-hint">5–60 min</p></div>
+            <div class="stepper">
+              <button class="step-btn" data-target="long" data-delta="-5" aria-label="Decrease long break">−</button>
+              <input id="inLong" type="number" min="5" max="60" value="15" aria-label="Long break duration in minutes">
+              <button class="step-btn" data-target="long" data-delta="5" aria-label="Increase long break">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-6">
+        <div class="card p-6">
+          <p class="overline">Appearance</p>
+          <div class="seg mt-4">
+            <button id="themeDark" class="seg-btn active"><i data-lucide="moon"></i>Dark</button>
+            <button id="themeLight" class="seg-btn"><i data-lucide="sun"></i>Light</button>
+          </div>
+        </div>
+        <div class="card p-6">
+          <p class="overline">Sound</p>
+          <div class="flex items-center justify-between gap-4 mt-4">
+            <div><p class="set-name">Session sounds</p><p class="set-hint">Chime when a session or break ends</p></div>
+            <label class="switch">
+              <input id="soundToggle" type="checkbox" checked aria-label="Toggle session sounds">
+              <span class="switch-track"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card danger-zone p-6 mt-6">
+      <p class="overline danger-text">Danger zone</p>
+      <div class="flex flex-wrap items-center justify-between gap-4 mt-3">
+        <p class="hint max-w-md">Reset all data permanently — level, XP, streaks, challenges, achievements, history and settings will be wiped from this browser.</p>
+        <button id="btnResetData" class="btn btn-danger"><i data-lucide="trash-2"></i><span>Reset all data</span></button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ TOASTS ============ -->
+<div id="toasts" aria-live="polite"></div>
+
+<!-- ============ LEVEL-UP MODAL ============ -->
+<div id="levelModal" class="modal-backdrop hidden">
+  <div class="modal-box">
+    <div class="level-stage">
+      <span id="levelShards" class="shards"></span>
+      <svg viewBox="0 0 160 160" class="level-svg" aria-hidden="true">
+        <circle class="ring-track-sm" cx="80" cy="80" r="70"/>
+        <circle id="levelRing" cx="80" cy="80" r="70" transform="rotate(-90 80 80)"/>
+      </svg>
+      <div class="level-center"><span class="overline">Level</span><b id="levelNum">2</b></div>
+    </div>
+    <h3 class="level-title">LEVEL UP</h3>
+    <p class="level-desc">New rank reached — keep the momentum alive.</p>
+    <p id="levelXpNote" class="level-note">0 / 500 XP toward next level</p>
+    <button id="btnLevelContinue" class="btn btn-primary btn-lg mt-6">Continue</button>
+  </div>
+</div>
+
+<!-- ============ CONFIRM MODAL ============ -->
+<div id="confirmModal" class="modal-backdrop hidden">
+  <div class="modal-box">
+    <div class="modal-ic"><i data-lucide="alert-triangle"></i></div>
+    <h3 id="confirmTitle" class="font-display font-bold text-xl">Are you sure?</h3>
+    <p id="confirmDesc" class="hint mt-2">This action cannot be undone.</p>
+    <div class="flex gap-3 justify-center mt-6">
+      <button id="confirmCancel" class="btn btn-ghost">Cancel</button>
+      <button id="confirmOk" class="btn btn-danger">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lucide icons -->
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+<script>
+'use strict';
+
+/* ============================================================
+   1. CONSTANTS & DEFINITIONS
+============================================================ */
+const STORE_KEY = 'focusbattle-v1';
+const XP_PER_MIN = 2; // XP per focused minute (25 min = 50 XP, 50 min = 100 XP)
+
+const CHALLENGE_DEFS = [
+  { id:'warmup', name:'First Spark',   desc:'Complete 1 focus session',          target:1,  unit:'session', reward:30,  icon:'zap' },
+  { id:'triple', name:'Triple Threat', desc:'Complete 3 focus sessions',         target:3,  unit:'session', reward:80,  icon:'swords' },
+  { id:'deep',   name:'Deep Work',     desc:'Focus for 60 minutes in total',     target:60, unit:'min',     reward:120, icon:'brain' }
+];
+
+// max minutes of a single session (derived from history)
+function maxSession(s){ return s.history.reduce((m,h)=>Math.max(m,h.minutes),0); }
+
+const ACHIEVEMENTS = [
+  { id:'first',   name:'First Focus',     desc:'Complete your first focus session',    icon:'play',          check:s=>s.totalSessions>=1,  pct:s=>Math.min(100,s.totalSessions*100),      label:s=>`${s.totalSessions} / 1 sessions` },
+  { id:'ten',     name:'Warming Up',      desc:'Complete 10 focus sessions',           icon:'dumbbell',      check:s=>s.totalSessions>=10, pct:s=>Math.min(100,s.totalSessions/10*100),   label:s=>`${s.totalSessions} / 10 sessions` },
+  { id:'fifty',   name:'Marathon Mind',   desc:'Complete 50 focus sessions',           icon:'mountain',      check:s=>s.totalSessions>=50, pct:s=>Math.min(100,s.totalSessions/50*100),   label:s=>`${s.totalSessions} / 50 sessions` },
+  { id:'streak3', name:'Kindling',        desc:'Reach a 3-day streak',                 icon:'calendar-check',check:s=>s.longestStreak>=3,  pct:s=>Math.min(100,s.longestStreak/3*100),    label:s=>`${s.longestStreak} / 3 days` },
+  { id:'streak7', name:'Unbroken',        desc:'Reach a 7-day streak',                 icon:'flame',         check:s=>s.longestStreak>=7,  pct:s=>Math.min(100,s.longestStreak/7*100),    label:s=>`${s.longestStreak} / 7 days` },
+  { id:'deep60',  name:'The Deep End',    desc:'Complete a single 60-minute session',  icon:'hourglass',     check:s=>maxSession(s)>=60,   pct:s=>Math.min(100,maxSession(s)/60*100),     label:s=>`${maxSession(s)} / 60 min single session` },
+  { id:'xp1000',  name:'Point Collector', desc:'Earn 1,000 XP in total',               icon:'coins',         check:s=>s.totalXP>=1000,     pct:s=>Math.min(100,s.totalXP/1000*100),       label:s=>`${fmtNum(s.totalXP)} / 1,000 XP` },
+  { id:'lvl5',    name:'Rising Star',     desc:'Reach Level 5',                        icon:'trending-up',   check:s=>s.level>=5,          pct:s=>Math.min(100,s.level/5*100),            label:s=>`Level ${s.level} / 5` },
+  { id:'lvl10',   name:'Double Digits',   desc:'Reach Level 10',                       icon:'crown',         check:s=>s.level>=10,         pct:s=>Math.min(100,s.level/10*100),           label:s=>`Level ${s.level} / 10` },
+  { id:'min600',  name:'Ten Hour Club',   desc:'Focus for 600 minutes in total',       icon:'timer',         check:s=>s.totalMinutes>=600, pct:s=>Math.min(100,s.totalMinutes/600*100),   label:s=>`${fmtNum(s.totalMinutes)} / 600 min` }
+];
+
+const MODE_META = {
+  focus:{ label:'Focus',       icon:'zap' },
+  short:{ label:'Short Break', icon:'coffee' },
+  long: { label:'Long Break',  icon:'armchair' }
+};
+
+const ACT_META = {
+  session:    { icon:'timer',        tone:'accent' },
+  level:      { icon:'trending-up',  tone:'accent' },
+  challenge:  { icon:'target',       tone:'gold'   },
+  achievement:{ icon:'trophy',       tone:'gold'   },
+  streak:     { icon:'flame',        tone:'gold'   }
+};
+
+const VIEW_TITLES = {
+  dashboard:'Dashboard', timer:'Focus Timer', challenges:'Challenges',
+  achievements:'Achievements', statistics:'Statistics', settings:'Settings'
+};
+
+/* ============================================================
+   2. STATE (localStorage)
+============================================================ */
+function defaultState(){
+  return {
+    xp:0, level:1, totalXP:0,
+    streak:0, longestStreak:0, lastSessionDate:null,
+    totalSessions:0, totalMinutes:0,
+    achievements:{},          // id -> { unlocked, date }
+    dailyMap:{},              // 'YYYY-MM-DD' -> { minutes, sessions }
+    history:[],               // session history (capped)
+    activity:[],              // activity feed (capped)
+    challengeDay:null, challenges:[],
+    cycleCount:0,             // focus sessions since last long break
+    settings:{ focus:25, short:5, long:15, theme:'dark', sound:true }
+  };
+}
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(!raw) return defaultState();
+    const s = JSON.parse(raw);
+    const d = defaultState();
+    return { ...d, ...s, settings:{ ...d.settings, ...(s.settings||{}) } };
+  }catch(e){
+    return defaultState();
+  }
+}
+
+function save(){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  catch(e){ /* storage unavailable (private mode) — app still works in-memory */ }
+}
+
+let state = loadState();
+let pendingLevelUp = false;
+
+/* ============================================================
+   3. UTILITIES
+============================================================ */
+const el = id => document.getElementById(id);
+
+function refreshIcons(){ try{ if(window.lucide) lucide.createIcons(); }catch(e){} }
+
+function dateKey(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function todayKey(){ return dateKey(new Date()); }
+
+function fmtNum(n){ return Number(n||0).toLocaleString('en-US'); }
+function fmtTime(ms){
+  const s = Math.max(0, Math.ceil(ms/1000));
+  return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+}
+function fmtClock(t){ return new Date(t).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+function dayLabel(t){
+  const d = new Date(t), k = dateKey(d);
+  if(k === todayKey()) return 'Today';
+  if(k === dateKey(new Date(Date.now()-864e5))) return 'Yesterday';
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+function timeToMidnight(){
+  const now = new Date(), mid = new Date(now);
+  mid.setHours(24,0,0,0);
+  const ms = mid - now;
+  return Math.floor(ms/36e5)+'h '+Math.floor(ms%36e5/6e4)+'m';
+}
+function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+function unitLabel(def){ return def.unit==='min' ? 'min' : (def.target>1 ? 'sessions' : 'session'); }
+
+/* ---- toasts ---- */
+function toast(msg, icon='info', tone='accent'){
+  const stack = el('toasts');
+  const t = document.createElement('div');
+  t.className = 'toast' + (tone==='gold' ? ' gold' : '');
+  t.innerHTML = `<span class="toast-ic"><i data-lucide="${icon}"></i></span><p>${msg}</p>`;
+  stack.appendChild(t);
+  while(stack.children.length > 4) stack.firstChild.remove();
+  refreshIcons();
+  setTimeout(()=>{ t.classList.add('out'); setTimeout(()=>t.remove(), 320); }, 3800);
+}
+
+/* ---- sounds (WebAudio, created on first user gesture) ---- */
+let audioCtx = null;
+function ensureAudio(){
+  if(!audioCtx){
+    try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+  }
+  if(audioCtx && audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
+}
+function chime(kind){
+  if(!state.settings.sound || !audioCtx) return;
+  try{
+    const notes = kind==='focus' ? [523.25, 783.99] : [659.25, 523.25];
+    notes.forEach((f,i)=>{
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type='sine'; o.frequency.value=f;
+      const t0 = audioCtx.currentTime + i*0.16;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.16, t0+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+0.5);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t0); o.stop(t0+0.55);
+    });
+  }catch(e){}
+}
+
+/* ============================================================
+   4. XP, LEVELS, STREAKS, ACTIVITY
+============================================================ */
+function xpNeeded(level){ return level * 500; }
+
+function addXP(amount){
+  if(amount <= 0) return;
+  state.xp += amount;
+  state.totalXP += amount;
+  while(state.xp >= xpNeeded(state.level)){
+    state.xp -= xpNeeded(state.level); // keep remaining XP
+    state.level++;
+    logActivity('level', `Reached Level ${state.level}`);
+    pendingLevelUp = true;
+  }
+}
+
+function logActivity(type, text){
+  state.activity.unshift({ type, text, t:Date.now() });
+  state.activity = state.activity.slice(0, 24);
+}
+
+// streak that is shown to the user (a stale streak displays as 0)
+function effectiveStreak(){
+  if(!state.lastSessionDate) return 0;
+  const tk = todayKey(), y = dateKey(new Date(Date.now()-864e5));
+  return (state.lastSessionDate===tk || state.lastSessionDate===y) ? state.streak : 0;
+}
+
+/* ============================================================
+   5. CHALLENGES
+============================================================ */
+function ensureChallenges(){
+  const tk = todayKey();
+  if(state.challengeDay !== tk || !Array.isArray(state.challenges) || state.challenges.length !== CHALLENGE_DEFS.length){
+    state.challengeDay = tk;
+    state.challenges = CHALLENGE_DEFS.map(d => ({ id:d.id, progress:0, claimed:false }));
+  }
+}
+
+function updateChallenges(minutes){
+  ensureChallenges();
+  CHALLENGE_DEFS.forEach(def=>{
+    const c = state.challenges.find(x=>x.id===def.id);
+    if(!c || c.claimed) return;
+    c.progress += def.unit==='min' ? minutes : 1;
+    if(c.progress >= def.target){
+      c.progress = def.target;
+      c.claimed = true; // reward earned only once
+      addXP(def.reward);
+      toast(`Challenge complete — ${def.name} · +${def.reward} XP`, 'target', 'gold');
+      logActivity('challenge', `Challenge complete — ${def.name} (+${def.reward} XP)`);
+    }
+  });
+}
+
+/* ============================================================
+   6. ACHIEVEMENTS
+============================================================ */
+function achUnlockedCount(){
+  return ACHIEVEMENTS.filter(a => state.achievements[a.id] && state.achievements[a.id].unlocked).length;
+}
+
+function checkAchievements(){
+  ACHIEVEMENTS.forEach(a=>{
+    const rec = state.achievements[a.id];
+    if(rec && rec.unlocked) return;
+    if(a.check(state)){
+      state.achievements[a.id] = { unlocked:true, date:Date.now() };
+      toast(`Achievement unlocked — ${a.name}`, 'trophy', 'gold');
+      logActivity('achievement', `Achievement unlocked — ${a.name}`);
+    }
+  });
+}
+
+/* ============================================================
+   7. SESSION COMPLETION PIPELINE
+============================================================ */
+function completeFocusSession(minutes){
+  const gained = Math.round(minutes * XP_PER_MIN);
+
+  state.totalSessions++;
+  state.totalMinutes += minutes;
+
+  const tk = todayKey();
+  const d = state.dailyMap[tk] || (state.dailyMap[tk] = { minutes:0, sessions:0 });
+  d.minutes += minutes;
+  d.sessions++;
+
+  // streak: first session of the day; consecutive day increments, gap resets
+  if(state.lastSessionDate !== tk){
+    const y = dateKey(new Date(Date.now()-864e5));
+    state.streak = (state.lastSessionDate === y) ? state.streak + 1 : 1;
+    state.longestStreak = Math.max(state.longestStreak, state.streak);
+    state.lastSessionDate = tk;
+    logActivity('streak', `Streak — ${state.streak} day${state.streak>1?'s':''}`);
+    toast(`Streak: ${state.streak} day${state.streak>1?'s':''}`, 'flame', 'gold');
+  }
+
+  state.history.unshift({ t:Date.now(), minutes, xp:gained });
+  state.history = state.history.slice(0, 60);
+
+  addXP(gained);
+  toast(`Session complete — +${gained} XP`, 'zap');
+  logActivity('session', `Focus session — ${minutes} min (+${gained} XP)`);
+
+  updateChallenges(minutes);
+  checkAchievements();
+  save();
+  renderAll();
+  maybeCelebrate();
+}
+
+/* ============================================================
+   8. TIMER ENGINE (single timer — never two at once)
+============================================================ */
+const T = { mode:'focus', running:false, total:25*60000, remaining:25*60000, endAt:0, iv:null };
+const RING_C = 2 * Math.PI * 130;
+
+function modeMinutes(m){ return state.settings[m]; }
+function stopInterval(){ if(T.iv){ clearInterval(T.iv); T.iv = null; } }
+
+function setMode(m){
+  stopInterval();
+  T.running = false;
+  T.mode = m;
+  T.total = T.remaining = modeMinutes(m) * 60000;
+  document.title = 'FocusBattle';
+  syncTimerControls();
+  updateTimerFace();
+}
+
+function startTimer(){
+  if(T.running) return;
+  ensureAudio();
+  T.endAt = Date.now() + T.remaining;
+  T.running = true;
+  T.iv = setInterval(tick, 200);
+  syncTimerControls();
+}
+
+function pauseTimer(){
+  if(!T.running) return;
+  T.remaining = Math.max(0, T.endAt - Date.now());
+  stopInterval();
+  T.running = false;
+  document.title = 'FocusBattle';
+  syncTimerControls();
+  updateTimerFace();
+}
+
+// resetting never awards XP
+function resetTimer(){
+  stopInterval();
+  T.running = false;
+  T.remaining = T.total;
+  document.title = 'FocusBattle';
+  syncTimerControls();
+  updateTimerFace();
+}
+
+function tick(){
+  T.remaining = T.endAt - Date.now();
+  if(T.remaining <= 0){
+    T.remaining = 0;
+    updateTimerFace();
+    completeTimer();
+  } else {
+    updateTimerFace();
+  }
+}
+
+function completeTimer(){
+  stopInterval();
+  T.running = false;
+  document.title = 'FocusBattle';
+
+  if(T.mode === 'focus'){
+    state.cycleCount = (state.cycleCount || 0) + 1;
+    const mins = modeMinutes('focus');
+    const next = (state.cycleCount % 4 === 0) ? 'long' : 'short';
+    const nextMin = modeMinutes(next);
+    setMode(next);
+    completeFocusSession(mins); // awards XP + updates everything
+    chime('focus');
+    toast(`Time for a ${nextMin}-min ${MODE_META[next].label.toLowerCase()} — press start when ready`, 'coffee');
+    pulseStart();
+  } else {
+    if(T.mode === 'long'){ state.cycleCount = 0; save(); }
+    chime('break');
+    toast('Break finished — ready for the next focus session?', 'timer');
+    setMode('focus');
+    pulseStart();
+  }
+}
+
+function pulseStart(){
+  const b = el('btnStartStop');
+  b.classList.remove('pulse'); void b.offsetWidth; b.classList.add('pulse');
+}
+
+function updateTimerFace(){
+  const tot = T.total || 1;
+  const frac = Math.max(0, Math.min(1, T.remaining / tot));
+  el('timerRing').style.strokeDashoffset = String(RING_C * (1 - frac));
+  el('timerRing').classList.toggle('break', T.mode !== 'focus');
+  el('timerTime').textContent = fmtTime(T.remaining);
+  if(T.running) document.title = `${fmtTime(T.remaining)} · ${MODE_META[T.mode].label} — FocusBattle`;
+}
+
+function syncTimerControls(){
+  const b = el('btnStartStop');
+  b.innerHTML = T.running
+    ? `<i data-lucide="pause"></i><span>Pause</span>`
+    : `<i data-lucide="play"></i><span>${T.remaining < T.total ? 'Resume' : 'Start'}</span>`;
+  el('btnReset').disabled = !T.running && T.remaining === T.total;
+  el('timerModeLabel').textContent = MODE_META[T.mode].label;
+  renderModeTabs();
+  renderCycleDots();
+  refreshIcons();
+}
+
+function renderModeTabs(){
+  ['focus','short','long'].forEach(m=>{
+    const lab = el('tab'+cap(m));
+    if(lab) lab.textContent = `${modeMinutes(m)} min`;
+    const tab = document.querySelector(`.mode-tab[data-mode="${m}"]`);
+    if(tab) tab.classList.toggle('active', T.mode === m);
+  });
+}
+
+function renderCycleDots(){
+  const n = state.cycleCount % 4;
+  const done = (state.cycleCount > 0 && n === 0) ? 4 : n;
+  el('cycleDots').innerHTML = [0,1,2,3].map(i=>`<span class="dot ${i<done?'on':''}"></span>`).join('');
+}
+
+function timerHintText(){
+  if(T.mode === 'focus'){
+    const n = state.cycleCount % 4;
+    return `Session ${n+1} of 4 in this cycle — a long break follows the 4th.`;
+  }
+  return T.mode === 'short'
+    ? 'Short breather — hydrate, stretch, breathe.'
+    : 'Long break — you earned it. Recharge fully.';
+}
+
+function buildTicks(){
+  let html = '';
+  for(let i=0;i<60;i++){
+    const a = i*6*Math.PI/180, long = i%5===0;
+    const r1 = long?138:143, r2 = 151;
+    html += `<line x1="${(160+Math.cos(a)*r1).toFixed(1)}" y1="${(160+Math.sin(a)*r1).toFixed(1)}"
+                   x2="${(160+Math.cos(a)*r2).toFixed(1)}" y2="${(160+Math.sin(a)*r2).toFixed(1)}"
+                   stroke="var(--tick)" stroke-width="${long?2:1}"/>`;
+  }
+  el('timerTicks').innerHTML = html;
+}
+
+/* ============================================================
+   9. RENDERING
+============================================================ */
+const DASH_C = 2 * Math.PI * 62;
+
+function renderSideLevel(){
+  const need = xpNeeded(state.level);
+  el('sideLevel').textContent = state.level;
+  el('sideXpText').textContent = `${fmtNum(state.xp)} / ${fmtNum(need)} XP`;
+  el('sideLevelBar').style.width = Math.min(100, state.xp/need*100) + '%';
+}
+
+function renderDashboard(){
+  const h = new Date().getHours();
+  el('greetText').textContent =
+    h<5 ? 'Up late, challenger' : h<12 ? 'Good morning, challenger' :
+    h<18 ? 'Good afternoon, challenger' : 'Good evening, challenger';
+  el('greetDate').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+
+  const need = xpNeeded(state.level);
+  el('dashRing').style.strokeDashoffset = String(DASH_C * (1 - Math.min(1, state.xp/need)));
+  el('dashLevel').textContent = state.level;
+  el('dashXpText').textContent = `${fmtNum(state.xp)} / ${fmtNum(need)} XP`;
+  el('dashNext').textContent = `${fmtNum(need - state.xp)} XP to Level ${state.level + 1}`;
+
+  const es = effectiveStreak();
+  el('dashStreakCur').textContent = es;
+  el('dashStreakLong').textContent = state.longestStreak;
+
+  const d = state.dailyMap[todayKey()] || { minutes:0, sessions:0 };
+  ['dashTodaySessions','heroSessions'].forEach(id => el(id).textContent = d.sessions);
+  ['dashTodayMinutes','heroMinutes'].forEach(id => el(id).textContent = d.minutes);
+
+  ensureChallenges();
+  el('dashChallenges').innerHTML = CHALLENGE_DEFS.map(def=>{
+    const c = state.challenges.find(x=>x.id===def.id);
+    const pct = Math.min(100, c.progress/def.target*100);
+    const count = c.claimed ? 'Complete'
+      : `${fmtNum(Math.min(c.progress,def.target))}/${fmtNum(def.target)} ${unitLabel(def)}`;
+    return `
+    <div class="mini-ch ${c.claimed?'is-done':''}">
+      <span class="mc-ic"><i data-lucide="${def.icon}"></i></span>
+      <div class="flex-1 min-w-0">
+        <div class="flex justify-between items-baseline gap-2">
+          <p class="mc-name">${def.name}</p><span class="mc-count">${count}</span>
+        </div>
+        <div class="bar mt-1.5"><div class="bar-fill ${c.claimed?'gold':''}" style="width:${pct}%"></div></div>
+      </div>
+      <span class="chip ${c.claimed?'chip-gold':''}">${c.claimed?'<i data-lucide="check"></i>':`+${def.reward} XP`}</span>
+    </div>`;
+  }).join('');
+
+  const acts = state.activity.slice(0, 6);
+  el('dashActivity').innerHTML = acts.length
+    ? acts.map(activityRow).join('')
+    : `<div class="empty"><i data-lucide="moon-star"></i><p>No activity yet</p><span>Complete your first focus session to start your legend.</span></div>`;
+  refreshIcons();
+}
+
+function activityRow(a){
+  const m = ACT_META[a.type] || { icon:'info', tone:'accent' };
+  return `<div class="act">
+    <span class="act-ic ${m.tone}"><i data-lucide="${m.icon}"></i></span>
+    <div class="min-w-0"><p class="act-text">${a.text}</p><p class="act-time">${dayLabel(a.t)} · ${fmtClock(a.t)}</p></div>
+  </div>`;
+}
+
+function renderTimer(){
+  syncTimerControls();
+  updateTimerFace();
+  el('timerHint').textContent = timerHintText();
+}
+
+function renderChallenges(){
+  el('challengesResetNote').textContent = `Resets daily · new challenges in ${timeToMidnight()}`;
+  el('challengesList').innerHTML = CHALLENGE_DEFS.map(def=>{
+    const c = state.challenges.find(x=>x.id===def.id);
+    const pct = Math.min(100, c.progress/def.target*100);
+    const count = c.claimed ? 'Complete'
+      : `${fmtNum(Math.min(c.progress,def.target))}/${fmtNum(def.target)} ${unitLabel(def)}`;
+    return `
+    <div class="card ch-row p-5 md:p-6 ${c.claimed?'is-done':''}">
+      <div class="flex items-start gap-4">
+        <span class="ch-ic ${c.claimed?'gold':''}"><i data-lucide="${def.icon}"></i></span>
+        <div class="flex-1 min-w-0">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="ch-name">${def.name}</p>
+            <span class="chip ${c.claimed?'chip-gold':''}">${c.claimed?'<i data-lucide="check"></i> Claimed':`+${def.reward} XP`}</span>
+          </div>
+          <p class="ch-desc">${def.desc}</p>
+          <div class="flex items-center gap-3 mt-3">
+            <div class="bar flex-1"><div class="bar-fill ${c.claimed?'gold':''}" style="width:${pct}%"></div></div>
+            <span class="ch-count">${count}</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  refreshIcons();
+}
+
+function renderAchievements(){
+  const un = achUnlockedCount();
+  el('achSummary').textContent = `${un} / ${ACHIEVEMENTS.length}`;
+  el('achBar').style.width = (un/ACHIEVEMENTS.length*100) + '%';
+  el('achGrid').innerHTML = ACHIEVEMENTS.map(a=>{
+    const rec = state.achievements[a.id];
+    const isUn = !!(rec && rec.unlocked);
+    return `
+    <div class="ach ${isUn?'unlocked':''}">
+      <span class="ach-ic"><i data-lucide="${a.icon}"></i></span>
+      <div class="flex-1 min-w-0">
+        <p class="ach-name">${a.name}</p>
+        <p class="ach-desc">${a.desc}</p>
+        ${isUn
+          ? `<span class="ach-date">Unlocked ${dayLabel(rec.date)} · ${fmtClock(rec.date)}</span>`
+          : `<div class="bar mt-2"><div class="bar-fill dimfill" style="width:${a.pct(state)}%"></div></div>
+             <span class="ach-prog">${a.label(state)}</span>`}
+      </div>
+      <span class="ach-state">${isUn?'UNLOCKED':'LOCKED'}</span>
+    </div>`;
+  }).join('');
+  refreshIcons();
+}
+
+function renderStats(){
+  el('statSessions').textContent = fmtNum(state.totalSessions);
+  el('statMinutes').textContent = fmtNum(state.totalMinutes);
+  el('statXP').textContent = fmtNum(state.totalXP);
+  el('statLevel').textContent = state.level;
+  el('statStreakCur').textContent = effectiveStreak();
+  el('statStreakLong').textContent = state.longestStreak;
+  el('statAch').textContent = `${achUnlockedCount()} / ${ACHIEVEMENTS.length}`;
+
+  // last 7 days chart — real data from dailyMap
+  const days = [];
+  for(let i=6;i>=0;i--){
+    const dt = new Date(); dt.setDate(dt.getDate()-i);
+    const k = dateKey(dt);
+    days.push({ k, label: i===0?'Today':dt.toLocaleDateString('en-US',{weekday:'short'}),
+                m:(state.dailyMap[k]||{minutes:0}).minutes });
+  }
+  const max = Math.max(30, ...days.map(d=>d.m));
+  el('chartBars').innerHTML = days.map(d=>{
+    const h = d.m===0 ? 3 : Math.max(6, Math.round(d.m/max*132));
+    return `<div class="chart-col ${d.k===todayKey()?'today':''}">
+      <span class="chart-val">${d.m>0?d.m:'–'}</span>
+      <div class="chart-track"><div class="chart-bar" style="height:${h}px"></div></div>
+      <span class="chart-day">${d.label}</span>
+    </div>`;
+  }).join('');
+
+  // recent session history — real data
+  const hist = state.history.slice(0, 10);
+  el('historyList').innerHTML = hist.length
+    ? hist.map(h=>`<div class="hist-row">
+        <span class="hist-ic"><i data-lucide="timer"></i></span>
+        <div class="flex-1"><p class="text-sm font-medium">Focus — ${h.minutes} min</p></div>
+        <div class="text-right"><p class="hist-xp">+${h.xp} XP</p><p class="hist-time">${dayLabel(h.t)} · ${fmtClock(h.t)}</p></div>
+      </div>`).join('')
+    : `<div class="empty"><i data-lucide="timer"></i><p>No sessions yet</p><span>Your completed focus sessions will appear here.</span></div>`;
+  refreshIcons();
+}
+
+function renderSettings(){
+  el('inFocus').value = state.settings.focus;
+  el('inShort').value = state.settings.short;
+  el('inLong').value  = state.settings.long;
+  el('soundToggle').checked = state.settings.sound;
+  syncThemeButtons();
+}
+
+function renderAll(){
+  ensureChallenges();
+  renderSideLevel();
+  renderDashboard();
+  renderTimer();
+  renderChallenges();
+  renderAchievements();
+  renderStats();
+  renderSettings();
+  refreshIcons();
+}
+
+/* ============================================================
+   10. NAVIGATION, THEME, MODALS
+============================================================ */
+let currentView = 'dashboard';
+
+function showView(name){
+  currentView = name;
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-'+name));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === name));
+  el('topbarTitle').textContent = VIEW_TITLES[name] || name;
+  closeSidebar();
+  window.scrollTo({ top:0 });
+  renderAll();
+}
+
+function openSidebar(){ el('sidebar').classList.add('open'); el('sidebarOverlay').classList.add('show'); }
+function closeSidebar(){ el('sidebar').classList.remove('open'); el('sidebarOverlay').classList.remove('show'); }
+
+function applyTheme(){ document.documentElement.dataset.theme = state.settings.theme; syncThemeButtons(); }
+function syncThemeButtons(){
+  const t = state.settings.theme;
+  el('themeDark').classList.toggle('active', t==='dark');
+  el('themeLight').classList.toggle('active', t==='light');
+  updateToggleBtn('themeToggleSide');
+  updateToggleBtn('themeToggleTop');
+}
+function updateToggleBtn(id){
+  const b = el(id);
+  b.innerHTML = `<i data-lucide="${state.settings.theme==='dark'?'sun':'moon'}"></i>`;
+  refreshIcons();
+}
+function setTheme(t){
+  state.settings.theme = t;
+  save();
+  applyTheme();
+  toast(`${t==='dark'?'Dark':'Light'} mode enabled`, t==='dark'?'moon':'sun');
+}
+
+/* ---- level-up modal (signature moment) ---- */
+function showLevelModal(){
+  el('levelNum').textContent = state.level;
+  el('levelXpNote').textContent =
+    `${fmtNum(state.xp)} / ${fmtNum(xpNeeded(state.level))} XP toward Level ${state.level+1}`;
+
+  // XP shards burst
+  const sh = el('levelShards');
+  sh.innerHTML = '';
+  for(let i=0;i<16;i++){
+    const s = document.createElement('span');
+    s.className = 'shard' + (i%2 ? ' gold' : '');
+    const a = Math.random()*Math.PI*2, dist = 95 + Math.random()*115;
+    s.style.setProperty('--tx', Math.cos(a)*dist+'px');
+    s.style.setProperty('--ty', Math.sin(a)*dist+'px');
+    s.style.setProperty('--rd', Math.round(Math.random()*360)+'deg');
+    s.style.animationDelay = (Math.random()*0.15)+'s';
+    sh.appendChild(s);
+  }
+  // restart ring sweep animation
+  const ring = el('levelRing');
+  ring.style.animation = 'none';
+  void ring.offsetWidth;
+  ring.style.animation = '';
+  el('levelModal').classList.remove('hidden');
+  refreshIcons();
+}
+function hideLevelModal(){ el('levelModal').classList.add('hidden'); }
+function maybeCelebrate(){
+  if(!pendingLevelUp) return;
+  pendingLevelUp = false;
+  chime('focus');
+  showLevelModal();
+}
+
+/* ---- generic confirm modal (no native confirm() anywhere) ---- */
+let confirmCb = null;
+function showConfirm(o){
+  el('confirmTitle').textContent = o.title;
+  el('confirmDesc').textContent = o.desc;
+  el('confirmOk').textContent = o.label || 'Confirm';
+  confirmCb = o.onConfirm;
+  el('confirmModal').classList.remove('hidden');
+  refreshIcons();
+}
+function hideConfirm(){ el('confirmModal').classList.add('hidden'); confirmCb = null; }
+
+/* ============================================================
+   11. SETTINGS LOGIC
+============================================================ */
+const RANGES = { focus:[5,120], short:[1,30], long:[5,60] };
+
+function setDuration(k, val){
+  const [min,max] = RANGES[k];
+  let v = Math.round(Number(val));
+  if(!isFinite(v)) v = state.settings[k];
+  v = Math.min(max, Math.max(min, v)); // validate + clamp
+  state.settings[k] = v;
+  save();
+  el('in'+cap(k)).value = v;
+  if(!T.running && T.mode === k){ T.total = T.remaining = v*60000; }
+  renderModeTabs();
+  renderTimer();
+}
+
+function resetAllData(){
+  try{ localStorage.removeItem(STORE_KEY); }catch(e){}
+  state = defaultState();
+  pendingLevelUp = false;
+  stopInterval();
+  T.running = false;
+  ensureChallenges();
+  applyTheme();
+  setMode('focus');
+  document.title = 'FocusBattle';
+  showView('dashboard');
+  toast('All data has been reset', 'trash-2');
+}
+
+/* ============================================================
+   12. WIRING & INIT
+============================================================ */
+function wire(){
+  // navigation
+  document.querySelectorAll('.nav-item').forEach(n =>
+    n.addEventListener('click', ()=>showView(n.dataset.view)));
+  document.querySelectorAll('[data-goto]').forEach(b =>
+    b.addEventListener('click', ()=>showView(b.dataset.goto)));
+  el('menuBtn').addEventListener('click', openSidebar);
+  el('sidebarOverlay').addEventListener('click', closeSidebar);
+
+  // theme
+  el('themeToggleSide').addEventListener('click',
+    ()=>setTheme(state.settings.theme==='dark'?'light':'dark'));
+  el('themeToggleTop').addEventListener('click',
+    ()=>setTheme(state.settings.theme==='dark'?'light':'dark'));
+  el('themeDark').addEventListener('click', ()=>setTheme('dark'));
+  el('themeLight').addEventListener('click', ()=>setTheme('light'));
+
+  // timer controls
+  el('btnStartStop').addEventListener('click', ()=> T.running ? pauseTimer() : startTimer());
+  el('btnReset').addEventListener('click', resetTimer);
+  document.querySelectorAll('.mode-tab').forEach(b =>
+    b.addEventListener('click', ()=>{
+      const m = b.dataset.mode;
+      if(m === T.mode && !T.running) return;
+      if(T.running){
+        stopInterval(); T.running = false; document.title = 'FocusBattle';
+        if(T.mode === 'focus' && T.remaining < T.total)
+          toast('Timer stopped — incomplete sessions earn no XP', 'info');
+      }
+      setMode(m);
+    }));
+
+  // dashboard hero CTA → jump to timer and start
+  el('btnDashStart').addEventListener('click', ()=>{
+    showView('timer');
+    if(T.mode !== 'focus') setMode('focus');
+    if(!T.running) startTimer();
+  });
+
+  // settings: inputs + steppers
+  [['inFocus','focus'],['inShort','short'],['inLong','long']].forEach(([id,k])=>{
+    el(id).addEventListener('change', e=>setDuration(k, e.target.value));
+  });
+  document.querySelectorAll('.step-btn').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const k = b.dataset.target, d = parseInt(b.dataset.delta,10);
+      const input = el('in'+cap(k));
+      const cur = parseInt(input.value,10);
+      setDuration(k, (isNaN(cur) ? state.settings[k] : cur) + d);
+    });
+  });
+
+  // sound
+  el('soundToggle').addEventListener('change', e=>{
+    state.settings.sound = e.target.checked;
+    save();
+    toast(e.target.checked ? 'Sounds on' : 'Sounds off', e.target.checked?'volume-2':'volume-x');
+  });
+
+  // danger zone
+  el('btnResetData').addEventListener('click', ()=>showConfirm({
+    title:'Reset all data?',
+    desc:'This permanently deletes your level, XP, streaks, challenges, achievements, session history and settings from this browser. This cannot be undone.',
+    label:'Delete everything',
+    onConfirm: resetAllData
+  }));
+
+  // modals
+  el('confirmOk').addEventListener('click', ()=>{ const cb = confirmCb; hideConfirm(); if(cb) cb(); });
+  el('confirmCancel').addEventListener('click', hideConfirm);
+  el('confirmModal').addEventListener('click', e=>{ if(e.target.id==='confirmModal') hideConfirm(); });
+  el('btnLevelContinue').addEventListener('click', hideLevelModal);
+  el('levelModal').addEventListener('click', e=>{ if(e.target.id==='levelModal') hideLevelModal(); });
+
+  // escape closes overlays
+  document.addEventListener('keydown', e=>{
+    if(e.key !== 'Escape') return;
+    if(!el('confirmModal').classList.contains('hidden')) hideConfirm();
+    else if(!el('levelModal').classList.contains('hidden')) hideLevelModal();
+    else closeSidebar();
+  });
+
+  // catch up instantly when returning to the tab
+  document.addEventListener('visibilitychange', ()=>{
+    if(!document.hidden && T.running) tick();
+  });
+}
+
+function init(){
+  buildTicks();
+  ensureChallenges();
+  applyTheme();
+  wire();
+  setMode('focus');
+  showView('dashboard');
+}
+
+init();
+</script>
+</body>
+</html>
