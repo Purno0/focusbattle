@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FocusBattle — Gamified Focus Arena</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23B8F03E' d='M13 2 3 14h7l-1 8 10-12h-7l1-8Z'/%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Tailwind (CDN) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+/* Tailwind config — colors, fonts, keyframes (must stay in <head>) */
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: {
+        display: ['"Chakra Petch"', 'sans-serif'],
+        body: ['"Space Grotesk"', 'sans-serif'],
+      },
+      colors: {
+        volt:     '#B8F03E',
+        voltdark: '#4E8D0B',
+        voltink:  '#131A03',
+        gold:     '#F2B84B',
+        golddark: '#C08A17',
+        rose:     '#F26D5B',
+        rosedark: '#D14A38',
+        teal:     '#6FD3BC',
+        tealdark: '#2E9B82',
+        night: { 950:'#0B0D0C', 900:'#121513', 800:'#181D1A', 700:'#232A25' },
+        paper: { 950:'#F1F3EC', 900:'#FFFFFF', 800:'#F6F8F1', 700:'#E7EBDF' },
+      },
+      boxShadow: { pop: '0 18px 45px rgba(15,25,15,.18)' },
+      keyframes: {
+        viewIn:    { from:{opacity:'0', transform:'translateY(10px)'}, to:{opacity:'1', transform:'translateY(0)'} },
+        popIn:     { from:{opacity:'0', transform:'scale(.9)'}, to:{opacity:'1', transform:'scale(1)'} },
+        toastIn:   { from:{opacity:'0', transform:'translateX(24px)'}, to:{opacity:'1', transform:'translateX(0)'} },
+        toastOut:  { to:{opacity:'0', transform:'translateX(24px)'} },
+        levelSweep:{ to:{ 'stroke-dashoffset':'0' } },
+        shardFly:  {
+          '0%':  { transform:'translate(-50%,-50%) rotate(0deg)', opacity:'1' },
+          '100%':{ transform:'translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) rotate(var(--rd))', opacity:'0' },
+        },
+        pulseBtn:  { '50%':{ transform:'scale(1.05)' } },
+      },
+      animation: {
+        viewIn:     'viewIn .3s ease both',
+        popIn:      'popIn .32s cubic-bezier(.2,.9,.3,1.15) both',
+        toastIn:    'toastIn .3s cubic-bezier(.2,.9,.3,1.2) both',
+        toastOut:   'toastOut .3s ease forwards',
+        levelSweep: 'levelSweep 1.1s cubic-bezier(.3,.7,.3,1) forwards',
+        shardFly:   'shardFly .95s cubic-bezier(.15,.6,.4,1) both',
+        pulseBtn:   'pulseBtn .45s ease 2',
+      },
+    },
+  },
+};
+</script>
+
+<!-- Lucide icons + app logic (defer keeps execution order: lucide first, then script.js) -->
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+<script src="script.js" defer></script>
+</head>
+
+<body class="min-h-screen overflow-x-hidden bg-paper-950 font-body text-[#1A201A] antialiased transition-colors dark:bg-night-950 dark:text-[#E9EDE8]">
+
+<!-- dot-grid texture -->
+<div class="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(rgba(22,32,20,0.05)_1px,transparent_1px)] bg-[length:26px_26px] dark:bg-[radial-gradient(rgba(255,255,255,0.035)_1px,transparent_1px)]"></div>
+
+<!-- ============ SIDEBAR ============ -->
+<aside id="sidebar" class="fixed inset-y-0 left-0 z-[60] flex w-64 -translate-x-full flex-col border-r border-black/10 bg-paper-900 px-4 py-6 transition-transform duration-300 lg:translate-x-0 dark:border-white/[0.08] dark:bg-night-900" aria-label="Main navigation">
+
+  <div class="flex items-center justify-between px-1 pb-5">
+    <div class="flex items-center gap-3">
+      <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-voltdark dark:bg-volt">
+        <svg viewBox="0 0 24 24" class="h-5 w-5"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" class="fill-white dark:fill-voltink"/></svg>
+      </span>
+      <div>
+        <p class="font-display text-base font-bold tracking-[0.06em]">FOCUS<span class="text-voltdark dark:text-volt">BATTLE</span></p>
+        <p class="text-[11px] text-[#68736A] dark:text-[#8E9A91]">Daily focus arena</p>
+      </div>
+    </div>
+    <button id="sbClose" class="flex h-9 w-9 items-center justify-center rounded-xl border border-black/10 transition hover:bg-black/5 lg:hidden dark:border-white/[0.08] dark:hover:bg-white/5" aria-label="Close menu">
+      <i data-lucide="x" class="h-4 w-4"></i>
+    </button>
+  </div>
+
+  <nav class="flex flex-1 flex-col gap-1">
+    <button data-view="dashboard" class="nav-item relative flex w-full items-center gap-3 rounded-xl px-3.5 py-3 font-display text-sm font-semibold tracking-wide transition-colors text-[#68736A] hover:bg-paper-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/50 dark:text-[#8E9A91] dark:hover:bg-night-800 dark:focus-visible:ring-volt/50">
+      <span class="nav-ind absolute -left-4 top-1/2 hidden h-6 w-[3px] -translate-y-1/2 rounded-full bg-voltdark dark:bg-volt"></span>
+      <i data-lucide="layout-dashboard" class="h-5 w-5"></i><span>Dashboard</span>
+    </button>
+    <button data-view="timer" class="nav-item relative flex w-full items-center gap-3 rounded-xl px-3.5 py-3 font-display text-sm font-semibold tracking-wide transition-colors text-[#68736A] hover:bg-paper-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/50 dark:text-[#8E9A91] dark:hover:bg-night-800 dark:focus-visible:ring-volt/50">
+      <span class="nav-ind absolute -left-4 top-1/2 hidden h-6 w-[3px] -translate-y-1/2 rounded-full bg-voltdark dark:bg-volt"></span>
+      <i data-lucide="timer" class="h-5 w-5"></i><span>Focus Timer</span>
+    </button>
+    <button data-view="challenges" class="nav-item relative flex w-full items-center gap-3 rounded-xl px-3.5 py-3 font-display text-sm font-semibold tracking-wide transition-colors text-[#68736A] hover:bg-paper-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/50 dark:text-[#8E9A91] dark:hover:bg-night-800 dark:focus-visible:ring-volt/50">
+      <span class="nav-ind absolute -left-4 top-1/2 hidden h-6 w-[3px] -translate-y-1/2 rounded-full bg-voltdark dark:bg-volt"></span>
+      <i data-lucide="target" class="h-5 w-5"></i><span>Challenges</span>
+    </button>
+    <button data-view="achievements" class="nav-item relative flex w-full items-center gap-3 rounded-xl px-3.5 py-3 font-display text-sm font-semibold tracking-wide transition-colors text-[#68736A] hover:bg-paper-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/50 dark:text-[#8E9A91] dark:hover:bg-night-800 dark:focus-visible:ring-volt/50">
+      <span class="nav-ind absolute -left-4 top-1/2 hidden h-6 w-[3px] -translate-y-1/2 rounded-full bg-voltdark dark:bg-volt"></span>
+      <i data-lucide="trophy" class="h-5 w-5"></i><span>Achievements</span>
+    </button>
+    <button data-view="statistics" class="nav-item relative flex w-full items-center gap-3 rounded-xl px-3.5 py-3 font-display text-sm font-semibold tracking-wide transition-colors text-[#68736A] hover:bg-paper-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/50 dark:text-[#8E9A91] dark:hover:bg-night-800 dark:focus-visible:ring-volt/50">
+      <span class="nav-ind absolute -left-4 top-1/2 hidden h-6 w-[3px] -translate-y-1/2 rounded-full bg-voltdark dark:bg-volt"></span>
+      <i data-lucide="bar-chart-3" class="h-5 w-5"></i><span>Statistics</span>
+    </button>
+    <button data-view="settings" class="nav-item relative flex w-full items-center gap-3 rounded-xl px-3.5 py-3 font-display text-sm font-semibold tracking-wide transition-colors text-[#68736A] hover:bg-paper-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/50 dark:text-[#8E9A91] dark:hover:bg-night-800 dark:focus-visible:ring-volt/50">
+      <span class="nav-ind absolute -left-4 top-1/2 hidden h-6 w-[3px] -translate-y-1/2 rounded-full bg-voltdark dark:bg-volt"></span>
+      <i data-lucide="settings" class="h-5 w-5"></i><span>Settings</span>
+    </button>
+  </nav>
+
+  <div class="mt-auto flex flex-col gap-3">
+    <div class="rounded-xl border border-black/10 bg-paper-800 p-3.5 dark:border-white/[0.06] dark:bg-night-800">
+      <div class="flex items-center justify-between">
+        <span class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Level</span>
+        <span id="sideLevel" class="font-display text-lg font-bold text-voltdark dark:text-volt">1</span>
+      </div>
+      <div class="mt-2 h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+        <div id="sideLevelBar" class="h-full rounded-full bg-voltdark transition-all duration-500 dark:bg-volt" style="width:0%"></div>
+      </div>
+      <p id="sideXpText" class="mt-2 text-xs tabular-nums text-[#68736A] dark:text-[#8E9A91]">0 / 500 XP</p>
+    </div>
+    <button id="themeToggleSide" class="flex h-9 w-9 items-center justify-center rounded-xl border border-black/10 transition hover:bg-black/5 dark:border-white/[0.08] dark:hover:bg-white/5" aria-label="Toggle theme"><i data-lucide="sun" class="h-4 w-4"></i></button>
+  </div>
+</aside>
+<div id="sidebarOverlay" class="pointer-events-none fixed inset-0 z-[55] bg-black/55 opacity-0 transition-opacity duration-300"></div>
+
+<!-- ============ MOBILE TOPBAR ============ -->
+<header class="sticky top-0 z-50 flex items-center justify-between border-b border-black/10 bg-paper-950/90 px-4 py-3 backdrop-blur lg:hidden dark:border-white/[0.08] dark:bg-night-950/90">
+  <button id="menuBtn" class="flex h-9 w-9 items-center justify-center rounded-xl border border-black/10 transition hover:bg-black/5 dark:border-white/[0.08] dark:hover:bg-white/5" aria-label="Open menu"><i data-lucide="menu" class="h-4 w-4"></i></button>
+  <p id="topbarTitle" class="font-display font-bold tracking-wider">Dashboard</p>
+  <button id="themeToggleTop" class="flex h-9 w-9 items-center justify-center rounded-xl border border-black/10 transition hover:bg-black/5 dark:border-white/[0.08] dark:hover:bg-white/5" aria-label="Toggle theme"><i data-lucide="sun" class="h-4 w-4"></i></button>
+</header>
+
+<main class="relative z-[1] px-4 pb-16 pt-5 md:px-6 lg:ml-64 lg:px-8 lg:pt-8">
+
+  <!-- ============ DASHBOARD ============ -->
+  <section id="view-dashboard" class="mx-auto max-w-5xl">
+    <div class="relative rounded-2xl border border-black/10 bg-paper-900 p-6 md:p-8 dark:border-white/[0.08] dark:bg-night-900">
+      <div class="pointer-events-none absolute left-0 top-0 h-6 w-6 rounded-tl-2xl border-l-2 border-t-2 border-voltdark/70 dark:border-volt/70"></div>
+      <div class="pointer-events-none absolute bottom-0 right-0 h-6 w-6 rounded-br-2xl border-b-2 border-r-2 border-voltdark/70 dark:border-volt/70"></div>
+
+      <div class="flex flex-col justify-between gap-8 lg:flex-row lg:items-center">
+        <div class="min-w-0 flex-1">
+          <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Today's battle</p>
+          <h1 id="greetText" class="mt-2 font-display text-3xl font-bold leading-tight md:text-4xl">Welcome back, challenger</h1>
+          <p id="greetDate" class="mt-1.5 text-sm text-[#68736A] dark:text-[#8E9A91]">—</p>
+          <div class="mt-7 flex flex-wrap items-center gap-4">
+            <button id="btnDashStart" class="inline-flex items-center justify-center gap-2 rounded-xl bg-voltdark px-6 py-3.5 font-display text-sm font-semibold uppercase tracking-wider text-white transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/60 active:scale-[.98] dark:bg-volt dark:text-voltink dark:focus-visible:ring-volt/60">
+              <i data-lucide="play" class="h-4 w-4"></i><span>Start Focus Session</span>
+            </button>
+            <p class="text-sm text-[#68736A] dark:text-[#8E9A91]"><span id="heroSessions">0</span> sessions · <span id="heroMinutes">0</span> min today</p>
+          </div>
+        </div>
+        <div class="mx-auto flex flex-col items-center lg:mx-0">
+          <div class="relative h-[150px] w-[150px] shrink-0">
+            <svg viewBox="0 0 140 140" class="block h-full w-full">
+              <circle cx="70" cy="70" r="62" fill="none" stroke-width="8" class="stroke-black/[0.07] dark:stroke-white/[0.08]"/>
+              <circle id="dashRing" cx="70" cy="70" r="62" fill="none" stroke-width="8" stroke-linecap="round" stroke-dasharray="389.56" transform="rotate(-90 70 70)" class="stroke-voltdark transition-all duration-500 dark:stroke-volt"/>
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <b id="dashLevel" class="font-display text-4xl font-bold leading-none text-voltdark dark:text-volt">1</b>
+              <i class="mt-1 font-display text-[10px] not-italic uppercase tracking-[0.24em] text-[#68736A] dark:text-[#8E9A91]">Level</i>
+            </div>
+          </div>
+          <p id="dashXpText" class="mt-3 text-sm font-semibold tabular-nums">0 / 500 XP</p>
+          <p id="dashNext" class="mt-0.5 text-xs text-[#68736A] dark:text-[#8E9A91]">500 XP to Level 2</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-black/10 bg-black/10 lg:grid-cols-4 dark:border-white/[0.08] dark:bg-white/[0.08]">
+      <div class="flex items-center gap-3 bg-paper-900 p-5 dark:bg-night-900">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-golddark/10 text-golddark dark:bg-gold/10 dark:text-gold"><i data-lucide="flame" class="h-5 w-5"></i></span>
+        <div><p id="dashStreakCur" class="font-display text-xl font-bold leading-tight tabular-nums">0</p><p class="text-xs text-[#68736A] dark:text-[#8E9A91]">Day streak</p></div>
+      </div>
+      <div class="flex items-center gap-3 bg-paper-900 p-5 dark:bg-night-900">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-voltdark/10 text-voltdark dark:bg-volt/10 dark:text-volt"><i data-lucide="calendar-days" class="h-5 w-5"></i></span>
+        <div><p id="dashStreakLong" class="font-display text-xl font-bold leading-tight tabular-nums">0</p><p class="text-xs text-[#68736A] dark:text-[#8E9A91]">Longest streak</p></div>
+      </div>
+      <div class="flex items-center gap-3 bg-paper-900 p-5 dark:bg-night-900">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-voltdark/10 text-voltdark dark:bg-volt/10 dark:text-volt"><i data-lucide="list-checks" class="h-5 w-5"></i></span>
+        <div><p id="dashTodaySessions" class="font-display text-xl font-bold leading-tight tabular-nums">0</p><p class="text-xs text-[#68736A] dark:text-[#8E9A91]">Sessions today</p></div>
+      </div>
+      <div class="flex items-center gap-3 bg-paper-900 p-5 dark:bg-night-900">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-voltdark/10 text-voltdark dark:bg-volt/10 dark:text-volt"><i data-lucide="hourglass" class="h-5 w-5"></i></span>
+        <div><p id="dashTodayMinutes" class="font-display text-xl font-bold leading-tight tabular-nums">0</p><p class="text-xs text-[#68736A] dark:text-[#8E9A91]">Minutes today</p></div>
+      </div>
+    </div>
+
+    <div class="mt-6 grid gap-6 lg:grid-cols-12">
+      <div class="rounded-2xl border border-black/10 bg-paper-900 p-6 lg:col-span-7 dark:border-white/[0.08] dark:bg-night-900">
+        <div class="flex items-center justify-between gap-3">
+          <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Daily challenges</p>
+          <button data-goto="challenges" class="inline-flex items-center gap-1 font-display text-xs font-semibold tracking-wide text-[#68736A] transition hover:text-voltdark dark:text-[#8E9A91] dark:hover:text-volt">View all<i data-lucide="arrow-right" class="h-3.5 w-3.5"></i></button>
+        </div>
+        <div id="dashChallenges" class="mt-4 space-y-3"></div>
+      </div>
+      <div class="rounded-2xl border border-black/10 bg-paper-900 p-6 lg:col-span-5 dark:border-white/[0.08] dark:bg-night-900">
+        <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Recent activity</p>
+        <div id="dashActivity" class="mt-4 space-y-4"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOCUS TIMER ============ -->
+  <section id="view-timer" class="mx-auto hidden max-w-5xl">
+    <div class="relative flex flex-col items-center rounded-2xl border border-black/10 bg-paper-900 p-6 md:p-10 dark:border-white/[0.08] dark:bg-night-900">
+      <div class="pointer-events-none absolute left-0 top-0 h-6 w-6 rounded-tl-2xl border-l-2 border-t-2 border-voltdark/70 dark:border-volt/70"></div>
+      <div class="pointer-events-none absolute bottom-0 right-0 h-6 w-6 rounded-br-2xl border-b-2 border-r-2 border-voltdark/70 dark:border-volt/70"></div>
+
+      <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Focus timer</p>
+      <p id="timerHint" class="mt-1 text-center text-sm text-[#68736A] dark:text-[#8E9A91]">Session 1 of 4 in this cycle — a long break follows the 4th.</p>
+
+      <div class="relative my-8 aspect-square w-[min(300px,78vw)]">
+        <svg viewBox="0 0 320 320" class="block h-full w-full" aria-hidden="true">
+          <g id="timerTicks" class="stroke-black/15 dark:stroke-white/[0.15]"></g>
+          <circle cx="160" cy="160" r="130" fill="none" stroke-width="8" class="stroke-black/[0.07] dark:stroke-white/[0.08]"/>
+          <circle id="timerRing" cx="160" cy="160" r="130" fill="none" stroke-width="8" stroke-linecap="round" stroke-dasharray="816.81" transform="rotate(-90 160 160)" class="stroke-voltdark transition-[stroke-dashoffset] duration-200 ease-linear dark:stroke-volt"/>
+        </svg>
+        <div class="absolute inset-0 flex flex-col items-center justify-center gap-1">
+          <p id="timerModeLabel" class="font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt">Focus</p>
+          <p id="timerTime" class="font-display text-[clamp(3rem,13vw,4.75rem)] font-semibold leading-none tabular-nums">25:00</p>
+        </div>
+      </div>
+
+      <div class="flex gap-1 rounded-2xl border border-black/10 bg-paper-800 p-1.5 dark:border-white/[0.06] dark:bg-night-800">
+        <button data-mode="focus" class="mode-tab flex flex-col items-center gap-0.5 rounded-xl px-4 py-2.5 font-display text-[13px] font-semibold uppercase tracking-wide transition-colors text-[#68736A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/50 sm:px-5 dark:text-[#8E9A91] dark:focus-visible:ring-volt/50">
+          <span>Focus</span><em id="tabFocus" class="text-[11px] not-italic tabular-nums opacity-75">25 min</em>
+        </button>
+        <button data-mode="short" class="mode-tab flex flex-col items-center gap-0.5 rounded-xl px-4 py-2.5 font-display text-[13px] font-semibold uppercase tracking-wide transition-colors text-[#68736A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/50 sm:px-5 dark:text-[#8E9A91] dark:focus-visible:ring-volt/50">
+          <span>Short break</span><em id="tabShort" class="text-[11px] not-italic tabular-nums opacity-75">5 min</em>
+        </button>
+        <button data-mode="long" class="mode-tab flex flex-col items-center gap-0.5 rounded-xl px-4 py-2.5 font-display text-[13px] font-semibold uppercase tracking-wide transition-colors text-[#68736A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/50 sm:px-5 dark:text-[#8E9A91] dark:focus-visible:ring-volt/50">
+          <span>Long break</span><em id="tabLong" class="text-[11px] not-italic tabular-nums opacity-75">15 min</em>
+        </button>
+      </div>
+
+      <div id="cycleDots" class="mt-5 flex gap-2" aria-hidden="true"></div>
+
+      <div class="mt-7 flex items-center gap-3">
+        <button id="btnReset" class="inline-flex items-center justify-center gap-2 rounded-xl border border-black/15 px-5 py-3 font-display text-sm font-semibold uppercase tracking-wider transition hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/50 disabled:pointer-events-none disabled:opacity-40 dark:border-white/15 dark:hover:bg-white/5 dark:focus-visible:ring-volt/50">
+          <i data-lucide="rotate-ccw" class="h-4 w-4"></i><span>Reset</span>
+        </button>
+        <button id="btnStartStop" class="inline-flex min-w-[190px] items-center justify-center gap-2 rounded-xl bg-voltdark px-6 py-3.5 font-display text-sm font-semibold uppercase tracking-wider text-white transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/60 active:scale-[.98] dark:bg-volt dark:text-voltink dark:focus-visible:ring-volt/60">
+          <i data-lucide="play" class="h-4 w-4"></i><span>Start</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CHALLENGES ============ -->
+  <section id="view-challenges" class="mx-auto hidden max-w-5xl">
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Challenges</p>
+        <h2 class="mt-2 font-display text-2xl font-bold">Daily challenges</h2>
+      </div>
+      <p id="challengesResetNote" class="text-xs text-[#68736A] dark:text-[#8E9A91]">Resets daily</p>
+    </div>
+    <div id="challengesList" class="space-y-4"></div>
+  </section>
+
+  <!-- ============ ACHIEVEMENTS ============ -->
+  <section id="view-achievements" class="mx-auto hidden max-w-5xl">
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Achievements</p>
+        <h2 class="mt-2 font-display text-2xl font-bold">Trophy hall</h2>
+      </div>
+      <div class="w-full sm:w-56">
+        <div class="flex items-baseline justify-between">
+          <span class="font-display text-[10px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt">Progress</span>
+          <span id="achSummary" class="text-xs tabular-nums text-[#68736A] dark:text-[#8E9A91]">0 / 10</span>
+        </div>
+        <div class="mt-2 h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+          <div id="achBar" class="h-full rounded-full bg-golddark transition-all duration-500 dark:bg-gold" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+    <div id="achGrid" class="grid gap-4 md:grid-cols-2"></div>
+  </section>
+
+  <!-- ============ STATISTICS ============ -->
+  <section id="view-statistics" class="mx-auto hidden max-w-5xl">
+    <div class="mb-6">
+      <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Statistics</p>
+      <h2 class="mt-2 font-display text-2xl font-bold">Your record</h2>
+    </div>
+
+    <div class="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-black/10 bg-black/10 lg:grid-cols-4 dark:border-white/[0.08] dark:bg-white/[0.08]">
+      <div class="flex items-center gap-3 bg-paper-900 p-5 dark:bg-night-900">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-voltdark/10 text-voltdark dark:bg-volt/10 dark:text-volt"><i data-lucide="list-checks" class="h-5 w-5"></i></span>
+        <div><p id="statSessions" class="font-display text-xl font-bold leading-tight tabular-nums">0</p><p class="text-xs text-[#68736A] dark:text-[#8E9A91]">Total sessions</p></div>
+      </div>
+      <div class="flex items-center gap-3 bg-paper-900 p-5 dark:bg-night-900">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-voltdark/10 text-voltdark dark:bg-volt/10 dark:text-volt"><i data-lucide="hourglass" class="h-5 w-5"></i></span>
+        <div><p id="statMinutes" class="font-display text-xl font-bold leading-tight tabular-nums">0</p><p class="text-xs text-[#68736A] dark:text-[#8E9A91]">Focus minutes</p></div>
+      </div>
+      <div class="flex items-center gap-3 bg-paper-900 p-5 dark:bg-night-900">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-golddark/10 text-golddark dark:bg-gold/10 dark:text-gold"><i data-lucide="coins" class="h-5 w-5"></i></span>
+        <div><p id="statXP" class="font-display text-xl font-bold leading-tight tabular-nums">0</p><p class="text-xs text-[#68736A] dark:text-[#8E9A91]">Total XP</p></div>
+      </div>
+      <div class="flex items-center gap-3 bg-paper-900 p-5 dark:bg-night-900">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-voltdark/10 text-voltdark dark:bg-volt/10 dark:text-volt"><i data-lucide="trending-up" class="h-5 w-5"></i></span>
+        <div><p id="statLevel" class="font-display text-xl font-bold leading-tight tabular-nums">1</p><p class="text-xs text-[#68736A] dark:text-[#8E9A91]">Current level</p></div>
+      </div>
+    </div>
+
+    <div class="mt-4 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-black/10 bg-black/10 sm:grid-cols-3 dark:border-white/[0.08] dark:bg-white/[0.08]">
+      <div class="flex items-center gap-3 bg-paper-900 p-5 dark:bg-night-900">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-golddark/10 text-golddark dark:bg-gold/10 dark:text-gold"><i data-lucide="flame" class="h-5 w-5"></i></span>
+        <div><p id="statStreakCur" class="font-display text-xl font-bold leading-tight tabular-nums">0</p><p class="text-xs text-[#68736A] dark:text-[#8E9A91]">Current streak</p></div>
+      </div>
+      <div class="flex items-center gap-3 bg-paper-900 p-5 dark:bg-night-900">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-voltdark/10 text-voltdark dark:bg-volt/10 dark:text-volt"><i data-lucide="calendar-days" class="h-5 w-5"></i></span>
+        <div><p id="statStreakLong" class="font-display text-xl font-bold leading-tight tabular-nums">0</p><p class="text-xs text-[#68736A] dark:text-[#8E9A91]">Longest streak</p></div>
+      </div>
+      <div class="flex items-center gap-3 bg-paper-900 p-5 dark:bg-night-900">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-golddark/10 text-golddark dark:bg-gold/10 dark:text-gold"><i data-lucide="trophy" class="h-5 w-5"></i></span>
+        <div><p id="statAch" class="font-display text-xl font-bold leading-tight tabular-nums">0 / 10</p><p class="text-xs text-[#68736A] dark:text-[#8E9A91]">Achievements</p></div>
+      </div>
+    </div>
+
+    <div class="mt-6 grid gap-6 lg:grid-cols-12">
+      <div class="rounded-2xl border border-black/10 bg-paper-900 p-6 lg:col-span-5 dark:border-white/[0.08] dark:bg-night-900">
+        <div class="flex items-baseline justify-between">
+          <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Last 7 days</p>
+          <span class="text-xs text-[#68736A] dark:text-[#8E9A91]">min / day</span>
+        </div>
+        <div id="chartBars" class="mt-5 grid grid-cols-7 items-end gap-2"></div>
+      </div>
+      <div class="rounded-2xl border border-black/10 bg-paper-900 p-6 lg:col-span-7 dark:border-white/[0.08] dark:bg-night-900">
+        <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Recent sessions</p>
+        <div id="historyList" class="mt-2"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section id="view-settings" class="mx-auto hidden max-w-5xl">
+    <div class="mb-6">
+      <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Settings</p>
+      <h2 class="mt-2 font-display text-2xl font-bold">Tune your arena</h2>
+    </div>
+
+    <div class="grid items-start gap-6 lg:grid-cols-2">
+      <div class="rounded-2xl border border-black/10 bg-paper-900 p-6 dark:border-white/[0.08] dark:bg-night-900">
+        <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Timer durations</p>
+        <div class="mt-2 divide-y divide-black/[0.07] dark:divide-white/[0.06]">
+          <div class="flex items-center justify-between gap-4 py-4">
+            <div><p class="text-sm font-semibold">Focus</p><p class="mt-0.5 text-xs text-[#68736A] dark:text-[#8E9A91]">5–120 min · earns 2 XP per minute</p></div>
+            <div class="flex shrink-0 items-center gap-1.5">
+              <button class="step-btn flex h-9 w-8 items-center justify-center rounded-lg border border-black/10 bg-paper-800 font-semibold transition hover:border-voltdark hover:text-voltdark dark:border-white/[0.08] dark:bg-night-800 dark:hover:border-volt dark:hover:text-volt" data-target="focus" data-delta="-5" aria-label="Decrease focus duration">−</button>
+              <input id="inFocus" type="text" inputmode="numeric" value="25" class="w-16 rounded-lg border border-black/10 bg-paper-800 px-1 py-2 text-center font-display text-sm font-semibold outline-none transition focus:border-voltdark dark:border-white/[0.08] dark:bg-night-800 dark:focus:border-volt" aria-label="Focus duration in minutes">
+              <button class="step-btn flex h-9 w-8 items-center justify-center rounded-lg border border-black/10 bg-paper-800 font-semibold transition hover:border-voltdark hover:text-voltdark dark:border-white/[0.08] dark:bg-night-800 dark:hover:border-volt dark:hover:text-volt" data-target="focus" data-delta="5" aria-label="Increase focus duration">+</button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-4 py-4">
+            <div><p class="text-sm font-semibold">Short break</p><p class="mt-0.5 text-xs text-[#68736A] dark:text-[#8E9A91]">1–30 min</p></div>
+            <div class="flex shrink-0 items-center gap-1.5">
+              <button class="step-btn flex h-9 w-8 items-center justify-center rounded-lg border border-black/10 bg-paper-800 font-semibold transition hover:border-voltdark hover:text-voltdark dark:border-white/[0.08] dark:bg-night-800 dark:hover:border-volt dark:hover:text-volt" data-target="short" data-delta="-1" aria-label="Decrease short break">−</button>
+              <input id="inShort" type="text" inputmode="numeric" value="5" class="w-16 rounded-lg border border-black/10 bg-paper-800 px-1 py-2 text-center font-display text-sm font-semibold outline-none transition focus:border-voltdark dark:border-white/[0.08] dark:bg-night-800 dark:focus:border-volt" aria-label="Short break duration in minutes">
+              <button class="step-btn flex h-9 w-8 items-center justify-center rounded-lg border border-black/10 bg-paper-800 font-semibold transition hover:border-voltdark hover:text-voltdark dark:border-white/[0.08] dark:bg-night-800 dark:hover:border-volt dark:hover:text-volt" data-target="short" data-delta="1" aria-label="Increase short break">+</button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-4 py-4">
+            <div><p class="text-sm font-semibold">Long break</p><p class="mt-0.5 text-xs text-[#68736A] dark:text-[#8E9A91]">5–60 min</p></div>
+            <div class="flex shrink-0 items-center gap-1.5">
+              <button class="step-btn flex h-9 w-8 items-center justify-center rounded-lg border border-black/10 bg-paper-800 font-semibold transition hover:border-voltdark hover:text-voltdark dark:border-white/[0.08] dark:bg-night-800 dark:hover:border-volt dark:hover:text-volt" data-target="long" data-delta="-5" aria-label="Decrease long break">−</button>
+              <input id="inLong" type="text" inputmode="numeric" value="15" class="w-16 rounded-lg border border-black/10 bg-paper-800 px-1 py-2 text-center font-display text-sm font-semibold outline-none transition focus:border-voltdark dark:border-white/[0.08] dark:bg-night-800 dark:focus:border-volt" aria-label="Long break duration in minutes">
+              <button class="step-btn flex h-9 w-8 items-center justify-center rounded-lg border border-black/10 bg-paper-800 font-semibold transition hover:border-voltdark hover:text-voltdark dark:border-white/[0.08] dark:bg-night-800 dark:hover:border-volt dark:hover:text-volt" data-target="long" data-delta="5" aria-label="Increase long break">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-6">
+        <div class="rounded-2xl border border-black/10 bg-paper-900 p-6 dark:border-white/[0.08] dark:bg-night-900">
+          <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Appearance</p>
+          <div class="mt-4 flex overflow-hidden rounded-xl border border-black/10 dark:border-white/[0.08]">
+            <button id="themeDark" class="flex flex-1 items-center justify-center gap-2 py-2.5 font-display text-xs font-semibold uppercase tracking-wider transition-colors text-[#68736A] dark:text-[#8E9A91]"><i data-lucide="moon" class="h-4 w-4"></i>Dark</button>
+            <button id="themeLight" class="flex flex-1 items-center justify-center gap-2 py-2.5 font-display text-xs font-semibold uppercase tracking-wider transition-colors text-[#68736A] dark:text-[#8E9A91]"><i data-lucide="sun" class="h-4 w-4"></i>Light</button>
+          </div>
+        </div>
+        <div class="rounded-2xl border border-black/10 bg-paper-900 p-6 dark:border-white/[0.08] dark:bg-night-900">
+          <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-voltdark dark:text-volt"><span class="h-0.5 w-3.5 bg-voltdark dark:bg-volt"></span>Sound</p>
+          <div class="mt-4 flex items-center justify-between gap-4">
+            <div><p class="text-sm font-semibold">Session sounds</p><p class="mt-0.5 text-xs text-[#68736A] dark:text-[#8E9A91]">Chime when a session or break ends</p></div>
+            <label class="relative inline-flex h-[26px] w-[46px] shrink-0 cursor-pointer items-center">
+              <input id="soundToggle" type="checkbox" checked class="peer sr-only" aria-label="Toggle session sounds">
+              <span class="absolute inset-0 rounded-full border border-black/10 bg-black/10 transition-colors peer-checked:border-voltdark peer-checked:bg-voltdark dark:border-white/10 dark:bg-white/10 dark:peer-checked:border-volt dark:peer-checked:bg-volt"></span>
+              <span class="absolute left-[3px] top-1/2 h-[18px] w-[18px] -translate-y-1/2 rounded-full bg-[#93A096] transition-all peer-checked:translate-x-[22px] peer-checked:bg-white dark:bg-[#77837A]"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-6 rounded-2xl border border-rosedark/30 bg-paper-900 p-6 dark:border-rose/25 dark:bg-night-900">
+      <p class="flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-rosedark dark:text-rose"><span class="h-0.5 w-3.5 bg-rosedark dark:bg-rose"></span>Danger zone</p>
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-4">
+        <p class="max-w-md text-xs text-[#68736A] dark:text-[#8E9A91]">Reset all data permanently — level, XP, streaks, challenges, achievements, history and settings will be wiped from this browser.</p>
+        <button id="btnResetData" class="inline-flex items-center justify-center gap-2 rounded-xl border border-rosedark px-5 py-3 font-display text-sm font-semibold uppercase tracking-wider text-rosedark transition hover:bg-rosedark hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rosedark/60 dark:border-rose dark:text-rose dark:hover:bg-rose dark:focus-visible:ring-rose/60">
+          <i data-lucide="trash-2" class="h-4 w-4"></i><span>Reset all data</span>
+        </button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ TOASTS ============ -->
+<div id="toasts" class="fixed left-4 right-4 top-4 z-[80] flex flex-col gap-2 sm:left-auto sm:max-w-[370px]" aria-live="polite"></div>
+
+<!-- ============ LEVEL-UP MODAL ============ -->
+<div id="levelModal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+  <div class="w-full max-w-md animate-popIn rounded-3xl border border-black/10 bg-paper-900 p-8 text-center shadow-pop dark:border-white/[0.08] dark:bg-night-900">
+    <div class="relative mx-auto h-44 w-44">
+      <span id="levelShards" class="pointer-events-none absolute left-1/2 top-1/2 z-10"></span>
+      <svg viewBox="0 0 160 160" class="block h-full w-full" aria-hidden="true">
+        <circle cx="80" cy="80" r="70" fill="none" stroke-width="8" class="stroke-black/[0.07] dark:stroke-white/[0.08]"/>
+        <circle id="levelRing" cx="80" cy="80" r="70" fill="none" stroke-width="6" stroke-linecap="round" stroke-dasharray="439.82" stroke-dashoffset="439.82" transform="rotate(-90 80 80)" class="animate-levelSweep stroke-voltdark dark:stroke-volt"/>
+      </svg>
+      <div class="absolute inset-0 flex flex-col items-center justify-center">
+        <span class="font-display text-[10px] font-semibold uppercase tracking-[0.24em] text-voltdark dark:text-volt">Level</span>
+        <b id="levelNum" class="font-display text-5xl font-bold leading-none text-voltdark dark:text-volt">2</b>
+      </div>
+    </div>
+    <h3 class="mt-5 font-display text-xl font-bold tracking-[0.3em] text-voltdark dark:text-volt">LEVEL UP</h3>
+    <p class="mt-1.5 text-sm text-[#68736A] dark:text-[#8E9A91]">New rank reached — keep the momentum alive.</p>
+    <p id="levelXpNote" class="mt-1 text-xs tabular-nums text-[#68736A] dark:text-[#8E9A91]">0 / 500 XP toward next level</p>
+    <button id="btnLevelContinue" class="mt-6 inline-flex items-center justify-center rounded-xl bg-voltdark px-7 py-3.5 font-display text-sm font-semibold uppercase tracking-wider text-white transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-voltdark/60 active:scale-[.98] dark:bg-volt dark:text-voltink dark:focus-visible:ring-volt/60">Continue</button>
+  </div>
+</div>
+
+<!-- ============ CONFIRM MODAL ============ -->
+<div id="confirmModal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+  <div class="w-full max-w-md animate-popIn rounded-3xl border border-black/10 bg-paper-900 p-8 text-center shadow-pop dark:border-white/[0.08] dark:bg-night-900">
+    <div class="mx-auto flex items-center justify-center rounded-2xl bg-rosedark/10 text-rosedark dark:bg-rose/10 dark:text-rose" style="height:52px;width:52px">
+      <i data-lucide="alert-triangle" class="h-6 w-6"></i>
+    </div>
+    <h3 id="confirmTitle" class="mt-4 font-display text-xl font-bold">Are you sure?</h3>
+    <p id="confirmDesc" class="mt-2 text-sm text-[#68736A] dark:text-[#8E9A91]">This action cannot be undone.</p>
+    <div class="mt-6 flex justify-center gap-3">
+      <button id="confirmCancel" class="inline-flex items-center justify-center rounded-xl border border-black/15 px-5 py-3 font-display text-sm font-semibold uppercase tracking-wider transition hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 dark:border-white/15 dark:hover:bg-white/5 dark:focus-visible:ring-white/30">Cancel</button>
+      <button id="confirmOk" class="inline-flex items-center justify-center rounded-xl bg-rosedark px-5 py-3 font-display text-sm font-semibold uppercase tracking-wider text-white transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rosedark/60 active:scale-[.98] dark:bg-rose dark:focus-visible:ring-rose/60">Confirm</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
