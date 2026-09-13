@@ -10,7 +10,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-<!-- Tailwind (Play CDN v3 — keep this exact tag, the config below depends on it) -->
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config = {
@@ -61,8 +60,7 @@ tailwind.config = {
 };
 </script>
 
-<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
-<script src="script.js" defer></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
 
 <body class="min-h-screen overflow-x-hidden bg-paper-950 font-body text-[#1A201A] antialiased transition-colors dark:bg-night-950 dark:text-[#E9EDE8]">
@@ -522,17 +520,1197 @@ tailwind.config = {
   </div>
 </div>
 
-<!-- Warn visibly if the Tailwind CDN failed to load (common cause of a "broken" page) -->
 <script>
-  window.addEventListener('load', function () {
-    if (!window.tailwind) {
-      var b = document.createElement('div');
-      b.setAttribute('role', 'alert');
-      b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#D14A38;color:#fff;font:14px/1.4 sans-serif;padding:10px 16px;text-align:center';
-      b.textContent = 'Tailwind failed to load from the CDN — check your internet connection, then hard-refresh (Ctrl+Shift+R).';
-      document.body.appendChild(b);
+(function () {
+'use strict';
+
+/* ============================================================
+   CONSTANTS
+============================================================ */
+const STORE_KEY = 'focusbattle-v1';
+const XP_PER_MIN = 2;
+const MAX_GOALS = 6;
+
+const CHALLENGE_DEFS = [
+  { id:'warmup', name:'First Spark',   desc:'Complete 1 focus session',      target:1,  unit:'session', reward:30,  icon:'zap' },
+  { id:'triple', name:'Triple Threat', desc:'Complete 3 focus sessions',     target:3,  unit:'session', reward:80,  icon:'swords' },
+  { id:'deep',   name:'Deep Work',     desc:'Focus for 60 minutes in total', target:60, unit:'min',     reward:120, icon:'brain' }
+];
+
+const maxSessionMinutes = s => s.history.reduce((m,h)=>Math.max(m,h.minutes),0);
+
+const ACHIEVEMENTS = [
+  { id:'first',   name:'First Focus',     desc:'Complete your first focus session',   icon:'play',           check:s=>s.totalSessions>=1,  pct:s=>Math.min(100,s.totalSessions*100),    label:s=>`${s.totalSessions} / 1 sessions` },
+  { id:'ten',     name:'Warming Up',      desc:'Complete 10 focus sessions',          icon:'dumbbell',       check:s=>s.totalSessions>=10, pct:s=>Math.min(100,s.totalSessions/10*100), label:s=>`${s.totalSessions} / 10 sessions` },
+  { id:'fifty',   name:'Marathon Mind',   desc:'Complete 50 focus sessions',          icon:'mountain',       check:s=>s.totalSessions>=50, pct:s=>Math.min(100,s.totalSessions/50*100), label:s=>`${s.totalSessions} / 50 sessions` },
+  { id:'streak3', name:'Kindling',        desc:'Reach a 3-day streak',                icon:'calendar-check', check:s=>s.longestStreak>=3,  pct:s=>Math.min(100,s.longestStreak/3*100),  label:s=>`${s.longestStreak} / 3 days` },
+  { id:'streak7', name:'Unbroken',        desc:'Reach a 7-day streak',                icon:'flame',          check:s=>s.longestStreak>=7,  pct:s=>Math.min(100,s.longestStreak/7*100),  label:s=>`${s.longestStreak} / 7 days` },
+  { id:'deep60',  name:'The Deep End',    desc:'Complete a single 60-minute session', icon:'hourglass',      check:s=>maxSessionMinutes(s)>=60, pct:s=>Math.min(100,maxSessionMinutes(s)/60*100), label:s=>`${maxSessionMinutes(s)} / 60 min single session` },
+  { id:'xp1000',  name:'Point Collector', desc:'Earn 1,000 XP in total',              icon:'coins',          check:s=>s.totalXP>=1000,     pct:s=>Math.min(100,s.totalXP/1000*100),     label:s=>`${fmtNum(s.totalXP)} / 1,000 XP` },
+  { id:'lvl5',    name:'Rising Star',     desc:'Reach Level 5',                       icon:'trending-up',    check:s=>s.level>=5,          pct:s=>Math.min(100,s.level/5*100),          label:s=>`Level ${s.level} / 5` },
+  { id:'lvl10',   name:'Double Digits',   desc:'Reach Level 10',                      icon:'crown',          check:s=>s.level>=10,         pct:s=>Math.min(100,s.level/10*100),         label:s=>`Level ${s.level} / 10` },
+  { id:'min600',  name:'Ten Hour Club',   desc:'Focus for 600 minutes in total',      icon:'timer',          check:s=>s.totalMinutes>=600, pct:s=>Math.min(100,s.totalMinutes/600*100), label:s=>`${fmtNum(s.totalMinutes)} / 600 min` }
+];
+
+const MODE_META = {
+  focus:{ label:'Focus',       icon:'zap' },
+  short:{ label:'Short Break', icon:'coffee' },
+  long: { label:'Long Break',  icon:'armchair' }
+};
+
+const ACT_META = {
+  session:    { icon:'timer',       tone:'acc'  },
+  level:      { icon:'trending-up', tone:'acc'  },
+  challenge:  { icon:'target',      tone:'gold' },
+  goal:       { icon:'flag',        tone:'gold' },
+  achievement:{ icon:'trophy',      tone:'gold' },
+  streak:     { icon:'flame',       tone:'gold' }
+};
+
+const VIEW_TITLES = {
+  dashboard:'Dashboard', timer:'Focus Timer', challenges:'Challenges',
+  goals:'Weekly Goals', achievements:'Achievements',
+  statistics:'Statistics', settings:'Settings'
+};
+
+const GOAL_TYPES = {
+  sessions:{ label:'Sessions',   unit:'sessions', icon:'list-checks', min:1,   max:35,    hint:'Focus sessions completed this week',      reward:t=>t*15 },
+  minutes: { label:'Focus time', unit:'min',      icon:'hourglass',   min:30,  max:2100,  hint:'Focused minutes this week',               reward:t=>Math.round(t*0.4) },
+  streak:  { label:'Day streak', unit:'days',     icon:'flame',       min:2,   max:30,    hint:'Your current streak reaches this length', reward:t=>t*40 },
+  xp:      { label:'XP earned',  unit:'XP',       icon:'coins',       min:100, max:10000, hint:'XP earned this week',                     reward:t=>Math.round(t*0.1) }
+};
+
+const C = {
+  muted:    'text-[#68736A] dark:text-[#8E9A91]',
+  barTrack: 'h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10',
+  barFill:  g => `h-full rounded-full transition-all duration-500 ${g?'bg-golddark dark:bg-gold':'bg-voltdark dark:bg-volt'}`,
+  barDim:   'h-full rounded-full bg-black/25 transition-all duration-500 dark:bg-white/20',
+  chip:     g => `inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 font-display text-[11px] font-semibold uppercase tracking-wider ${g
+              ? 'border-golddark/30 bg-golddark/10 text-golddark dark:border-gold/25 dark:bg-gold/10 dark:text-gold'
+              : 'border-voltdark/25 bg-voltdark/10 text-voltdark dark:border-volt/25 dark:bg-volt/10 dark:text-volt'}`,
+  iconAcc:  'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-voltdark/10 text-voltdark dark:bg-volt/10 dark:text-volt',
+  iconGold: 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-golddark/10 text-golddark dark:bg-gold/10 dark:text-gold',
+  navOn:  ['bg-paper-800','text-[#1A201A]','dark:bg-night-800','dark:text-[#E9EDE8]'],
+  navOff: ['text-[#68736A]','dark:text-[#8E9A91]'],
+  tabOn:  ['bg-voltdark','text-white','dark:bg-volt','dark:text-voltink'],
+  tabOff: ['text-[#68736A]','dark:text-[#8E9A91]'],
+  segOn:  ['bg-voltdark','text-white','dark:bg-volt','dark:text-voltink'],
+  segOff: ['text-[#68736A]','dark:text-[#8E9A91]']
+};
+
+/* ============================================================
+   STATE
+============================================================ */
+function defaultState(){
+  return {
+    xp:0, level:1, totalXP:0,
+    streak:0, longestStreak:0, lastSessionDate:null,
+    totalSessions:0, totalMinutes:0,
+    achievements:{}, dailyMap:{}, history:[], activity:[],
+    challengeDay:null, challenges:[],
+    goals:{ weekKey:null, items:[] },
+    cycleCount:0,
+    settings:{ focus:25, short:5, long:15, theme:'dark', sound:true }
+  };
+}
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(!raw) return defaultState();
+    const s = JSON.parse(raw);
+    const d = defaultState();
+    return { ...d, ...s, settings:{ ...d.settings, ...(s.settings||{}) } };
+  }catch(e){ return defaultState(); }
+}
+
+function save(){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
+}
+
+let state = loadState();
+let pendingLevelUp = false;
+
+/* ============================================================
+   UTILITIES
+============================================================ */
+const el = id => document.getElementById(id);
+const refreshIcons = () => { try{ if(window.lucide) lucide.createIcons(); }catch(e){} };
+
+function dateKey(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+const todayKey = () => dateKey(new Date());
+const fmtNum  = n => Number(n||0).toLocaleString('en-US');
+const fmtTime = ms => {
+  const s = Math.max(0, Math.ceil(ms/1000));
+  return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+};
+const fmtClock = t => new Date(t).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+function dayLabel(t){
+  const d = new Date(t), k = dateKey(d);
+  if(k === todayKey()) return 'Today';
+  if(k === dateKey(new Date(Date.now()-864e5))) return 'Yesterday';
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+function timeToMidnight(){
+  const now = new Date(), mid = new Date(now);
+  mid.setHours(24,0,0,0);
+  const ms = mid - now;
+  return Math.floor(ms/36e5)+'h '+Math.floor(ms%36e5/6e4)+'m';
+}
+const cap = s => s.charAt(0).toUpperCase()+s.slice(1);
+const unitLabel = def => def.unit==='min' ? 'min' : (def.target>1 ? 'sessions' : 'session');
+
+function toast(msg, icon='info', tone='acc'){
+  const stack = el('toasts');
+  if(!stack) return;
+  const t = document.createElement('div');
+  t.className = 'flex items-stretch overflow-hidden rounded-xl border animate-toastIn shadow-pop motion-reduce:animate-none '
+    + (tone==='gold' ? 'border-golddark/30 bg-paper-900 dark:border-gold/25 dark:bg-night-800'
+                     : 'border-black/10 bg-paper-900 dark:border-white/[0.08] dark:bg-night-800');
+  t.innerHTML = `<span class="w-1 shrink-0 ${tone==='gold'?'bg-golddark dark:bg-gold':'bg-voltdark dark:bg-volt'}"></span>
+    <span class="flex items-center gap-2.5 px-3.5 py-3">
+      <span class="flex shrink-0 ${tone==='gold'?'text-golddark dark:text-gold':'text-voltdark dark:text-volt'}"><i data-lucide="${icon}" class="h-4 w-4"></i></span>
+      <p class="text-sm font-medium leading-snug">${msg}</p>
+    </span>`;
+  stack.appendChild(t);
+  while(stack.children.length > 4) stack.firstChild.remove();
+  refreshIcons();
+  setTimeout(()=>{
+    t.classList.remove('animate-toastIn');
+    void t.offsetWidth;
+    t.classList.add('animate-toastOut');
+    setTimeout(()=>t.remove(), 300);
+  }, 3800);
+}
+
+let audioCtx = null;
+function ensureAudio(){
+  if(!audioCtx){
+    try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+  }
+  if(audioCtx && audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
+}
+function chime(kind){
+  if(!state.settings.sound || !audioCtx) return;
+  try{
+    const notes = kind==='focus' ? [523.25, 783.99] : [659.25, 523.25];
+    notes.forEach((f,i)=>{
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type='sine'; o.frequency.value=f;
+      const t0 = audioCtx.currentTime + i*0.16;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.16, t0+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+0.5);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t0); o.stop(t0+0.55);
+    });
+  }catch(e){}
+}
+
+/* ============================================================
+   WEEKS
+============================================================ */
+function weekStart(d){
+  const dt = new Date(d);
+  dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+  dt.setHours(0,0,0,0);
+  return dt;
+}
+const weekKey = () => dateKey(weekStart(new Date()));
+
+function weekDays(){
+  const start = weekStart(new Date()), keys = [], tk = todayKey();
+  for(let i=0;i<7;i++){
+    const d = new Date(start); d.setDate(start.getDate()+i);
+    const k = dateKey(d);
+    if(k > tk) break;
+    keys.push(k);
+  }
+  return keys;
+}
+
+function weekTotals(){
+  let sessions=0, minutes=0, xp=0;
+  weekDays().forEach(k=>{
+    const d = state.dailyMap[k];
+    if(!d) return;
+    sessions += d.sessions||0;
+    minutes  += d.minutes||0;
+    xp += (d.xp != null ? d.xp : (d.minutes||0)*XP_PER_MIN) + (d.bonus||0);
+  });
+  return { sessions, minutes, xp };
+}
+
+/* ============================================================
+   XP / STREAKS
+============================================================ */
+const xpNeeded = level => level * 500;
+
+function addXP(amount){
+  if(amount <= 0) return;
+  state.xp += amount;
+  state.totalXP += amount;
+  while(state.xp >= xpNeeded(state.level)){
+    state.xp -= xpNeeded(state.level);
+    state.level++;
+    logActivity('level', `Reached Level ${state.level}`);
+    pendingLevelUp = true;
+  }
+}
+
+function logActivity(type, text){
+  state.activity.unshift({ type, text, t:Date.now() });
+  state.activity = state.activity.slice(0, 24);
+}
+
+function effectiveStreak(){
+  if(!state.lastSessionDate) return 0;
+  const tk = todayKey(), y = dateKey(new Date(Date.now()-864e5));
+  return (state.lastSessionDate===tk || state.lastSessionDate===y) ? state.streak : 0;
+}
+
+/* ============================================================
+   DAILY CHALLENGES
+============================================================ */
+function ensureChallenges(){
+  const tk = todayKey();
+  if(state.challengeDay !== tk || !Array.isArray(state.challenges) || state.challenges.length !== CHALLENGE_DEFS.length){
+    state.challengeDay = tk;
+    state.challenges = CHALLENGE_DEFS.map(d => ({ id:d.id, progress:0, claimed:false }));
+  }
+}
+
+function updateChallenges(minutes){
+  ensureChallenges();
+  CHALLENGE_DEFS.forEach(def=>{
+    const c = state.challenges.find(x=>x.id===def.id);
+    if(!c || c.claimed) return;
+    c.progress += def.unit==='min' ? minutes : 1;
+    if(c.progress >= def.target){
+      c.progress = def.target;
+      c.claimed = true;
+      addXP(def.reward);
+      const td = state.dailyMap[todayKey()] || (state.dailyMap[todayKey()] = { minutes:0, sessions:0 });
+      td.bonus = (td.bonus||0) + def.reward;
+      toast(`Challenge complete — ${def.name} · +${def.reward} XP`, 'target', 'gold');
+      logActivity('challenge', `Challenge complete — ${def.name} (+${def.reward} XP)`);
     }
   });
+}
+
+/* ============================================================
+   WEEKLY GOALS
+============================================================ */
+function ensureGoals(){
+  const wk = weekKey();
+  if(!state.goals || state.goals.weekKey !== wk || !Array.isArray(state.goals.items)){
+    state.goals = { weekKey: wk, items: [] };
+  }
+}
+
+function goalTitle(g){
+  switch(g.type){
+    case 'sessions': return `${g.target} sessions this week`;
+    case 'minutes':  return `${fmtNum(g.target)} focus minutes`;
+    case 'streak':   return `Hold a ${g.target}-day streak`;
+    case 'xp':       return `Earn ${fmtNum(g.target)} XP`;
+  }
+  return 'Goal';
+}
+
+function goalProgress(g){
+  const t = weekTotals();
+  switch(g.type){
+    case 'sessions': return t.sessions;
+    case 'minutes':  return t.minutes;
+    case 'xp':       return t.xp;
+    case 'streak':   return effectiveStreak();
+  }
+  return 0;
+}
+
+function checkGoals(){
+  ensureGoals();
+  let changed = false;
+  state.goals.items.forEach(g=>{
+    if(g.completed || g.claimed) return;
+    if(goalProgress(g) >= g.target){
+      g.completed = true;
+      g.completedAt = Date.now();
+      changed = true;
+      toast(`Goal complete — ${goalTitle(g)} · claim your +${g.reward} XP`, 'flag', 'gold');
+      logActivity('goal', `Weekly goal complete — ${goalTitle(g)}`);
+    }
+  });
+  if(changed) save();
+}
+
+function claimGoal(id){
+  ensureGoals();
+  const g = state.goals.items.find(x=>x.id===id);
+  if(!g || !g.completed || g.claimed) return;
+  g.claimed = true;
+  addXP(g.reward);
+  logActivity('goal', `Weekly goal claimed — ${goalTitle(g)} (+${g.reward} XP)`);
+  toast(`Goal claimed — +${g.reward} XP`, 'flag', 'gold');
+  save();
+  renderAll();
+  maybeCelebrate();
+}
+
+function removeGoal(id){
+  ensureGoals();
+  const before = state.goals.items.length;
+  state.goals.items = state.goals.items.filter(x=>x.id!==id);
+  if(state.goals.items.length === before) return;
+  save();
+  renderAll();
+  toast('Goal removed', 'flag');
+}
+
+function addGoalFromForm(){
+  ensureGoals();
+  const typeEl = el('goalType'), targetEl = el('goalTarget');
+  if(!typeEl || !targetEl) return;
+  const type = typeEl.value;
+  const def = GOAL_TYPES[type];
+  const target = Math.round(Number(targetEl.value));
+  if(!def || !isFinite(target) || target < def.min || target > def.max){
+    toast(`Target must be between ${def.min} and ${fmtNum(def.max)}`, 'info');
+    return;
+  }
+  if(state.goals.items.length >= MAX_GOALS){
+    toast('Weekly board is full — claim or remove a goal first', 'info');
+    return;
+  }
+  state.goals.items.push({
+    id:'g'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36),
+    type, target, reward: def.reward(target),
+    completed:false, claimed:false, createdAt:Date.now()
+  });
+  save();
+  renderAll();
+  toast(`Goal added — ${goalTitle(state.goals.items[state.goals.items.length-1])}`, 'flag');
+}
+
+function updateGoalRewardPreview(){
+  const typeEl = el('goalType'), targetEl = el('goalTarget'), out = el('goalRewardPreview');
+  if(!typeEl || !targetEl || !out) return;
+  const def = GOAL_TYPES[typeEl.value];
+  const target = Math.round(Number(targetEl.value));
+  out.textContent = (def && isFinite(target) && target >= def.min && target <= def.max)
+    ? `Reward: +${def.reward(target)} XP`
+    : `Target range: ${def.min}–${fmtNum(def.max)} ${def.unit}`;
+}
+
+/* ============================================================
+   ACHIEVEMENTS
+============================================================ */
+const achUnlockedCount = () => ACHIEVEMENTS.filter(a => state.achievements[a.id] && state.achievements[a.id].unlocked).length;
+
+function checkAchievements(){
+  ACHIEVEMENTS.forEach(a=>{
+    const rec = state.achievements[a.id];
+    if(rec && rec.unlocked) return;
+    if(a.check(state)){
+      state.achievements[a.id] = { unlocked:true, date:Date.now() };
+      toast(`Achievement unlocked — ${a.name}`, 'trophy', 'gold');
+      logActivity('achievement', `Achievement unlocked — ${a.name}`);
+    }
+  });
+}
+
+/* ============================================================
+   SESSION PIPELINE
+============================================================ */
+function completeFocusSession(minutes){
+  const gained = Math.round(minutes * XP_PER_MIN);
+
+  state.totalSessions++;
+  state.totalMinutes += minutes;
+
+  const tk = todayKey();
+  const d = state.dailyMap[tk] || (state.dailyMap[tk] = { minutes:0, sessions:0 });
+  d.minutes += minutes;
+  d.sessions++;
+  d.xp = (d.xp||0) + gained;
+
+  if(state.lastSessionDate !== tk){
+    const y = dateKey(new Date(Date.now()-864e5));
+    state.streak = (state.lastSessionDate === y) ? state.streak + 1 : 1;
+    state.longestStreak = Math.max(state.longestStreak, state.streak);
+    state.lastSessionDate = tk;
+    logActivity('streak', `Streak — ${state.streak} day${state.streak>1?'s':''}`);
+    toast(`Streak: ${state.streak} day${state.streak>1?'s':''}`, 'flame', 'gold');
+  }
+
+  state.history.unshift({ t:Date.now(), minutes, xp:gained });
+  state.history = state.history.slice(0, 60);
+
+  addXP(gained);
+  toast(`Session complete — +${gained} XP`, 'zap');
+  logActivity('session', `Focus session — ${minutes} min (+${gained} XP)`);
+
+  updateChallenges(minutes);
+  checkGoals();
+  checkAchievements();
+  save();
+  renderAll();
+  maybeCelebrate();
+}
+
+/* ============================================================
+   TIMER
+============================================================ */
+const T = { mode:'focus', running:false, total:25*60000, remaining:25*60000, endAt:0, iv:null };
+const RING_C = 2 * Math.PI * 130;
+
+const modeMinutes = m => state.settings[m];
+const stopInterval = () => { if(T.iv){ clearInterval(T.iv); T.iv = null; } };
+
+function setMode(m){
+  stopInterval();
+  T.running = false;
+  T.mode = m;
+  T.total = T.remaining = modeMinutes(m) * 60000;
+  document.title = 'FocusBattle';
+  syncTimerControls();
+  updateTimerFace();
+}
+
+function startTimer(){
+  if(T.running) return;
+  ensureAudio();
+  T.endAt = Date.now() + T.remaining;
+  T.running = true;
+  T.iv = setInterval(tick, 200);
+  syncTimerControls();
+}
+
+function pauseTimer(){
+  if(!T.running) return;
+  T.remaining = Math.max(0, T.endAt - Date.now());
+  stopInterval();
+  T.running = false;
+  document.title = 'FocusBattle';
+  syncTimerControls();
+  updateTimerFace();
+}
+
+function resetTimer(){
+  stopInterval();
+  T.running = false;
+  T.remaining = T.total;
+  document.title = 'FocusBattle';
+  syncTimerControls();
+  updateTimerFace();
+}
+
+function tick(){
+  T.remaining = T.endAt - Date.now();
+  if(T.remaining <= 0){
+    T.remaining = 0;
+    updateTimerFace();
+    completeTimer();
+  } else {
+    updateTimerFace();
+  }
+}
+
+function completeTimer(){
+  stopInterval();
+  T.running = false;
+  document.title = 'FocusBattle';
+
+  if(T.mode === 'focus'){
+    state.cycleCount = (state.cycleCount || 0) + 1;
+    const mins = modeMinutes('focus');
+    const next = (state.cycleCount % 4 === 0) ? 'long' : 'short';
+    const nextMin = modeMinutes(next);
+    setMode(next);
+    completeFocusSession(mins);
+    chime('focus');
+    toast(`Time for a ${nextMin}-min ${MODE_META[next].label.toLowerCase()} — press start when ready`, 'coffee');
+    pulseStart();
+  } else {
+    if(T.mode === 'long'){ state.cycleCount = 0; save(); }
+    chime('break');
+    toast('Break finished — ready for the next focus session?', 'timer');
+    setMode('focus');
+    pulseStart();
+  }
+}
+
+function pulseStart(){
+  const b = el('btnStartStop');
+  if(!b) return;
+  b.classList.remove('animate-pulseBtn');
+  void b.offsetWidth;
+  b.classList.add('animate-pulseBtn');
+  setTimeout(()=>b.classList.remove('animate-pulseBtn'), 950);
+}
+
+function updateTimerFace(){
+  const ring = el('timerRing'), timeEl = el('timerTime');
+  if(!ring || !timeEl) return;
+  const tot = T.total || 1;
+  const frac = Math.max(0, Math.min(1, T.remaining / tot));
+  ring.style.strokeDashoffset = String(RING_C * (1 - frac));
+  const isBreak = T.mode !== 'focus';
+  ring.classList.remove('stroke-voltdark','dark:stroke-volt','stroke-tealdark','dark:stroke-teal');
+  ring.classList.add(...(isBreak ? ['stroke-tealdark','dark:stroke-teal'] : ['stroke-voltdark','dark:stroke-volt']));
+  timeEl.textContent = fmtTime(T.remaining);
+  if(T.running) document.title = `${fmtTime(T.remaining)} · ${MODE_META[T.mode].label} — FocusBattle`;
+}
+
+function syncTimerControls(){
+  const b = el('btnStartStop');
+  if(b){
+    b.innerHTML = T.running
+      ? `<i data-lucide="pause" class="h-4 w-4"></i><span>Pause</span>`
+      : `<i data-lucide="play" class="h-4 w-4"></i><span>${T.remaining < T.total ? 'Resume' : 'Start'}</span>`;
+  }
+  const rb = el('btnReset');
+  if(rb) rb.disabled = !T.running && T.remaining === T.total;
+  const ml = el('timerModeLabel');
+  if(ml) ml.textContent = MODE_META[T.mode].label;
+  renderModeTabs();
+  renderCycleDots();
+  refreshIcons();
+}
+
+function renderModeTabs(){
+  ['focus','short','long'].forEach(m=>{
+    const lab = el('tab'+cap(m));
+    if(lab) lab.textContent = `${modeMinutes(m)} min`;
+    const tab = document.querySelector(`.mode-tab[data-mode="${m}"]`);
+    if(!tab) return;
+    const on = T.mode === m;
+    tab.classList.remove(...C.tabOn, ...C.tabOff);
+    tab.classList.add(...(on ? C.tabOn : C.tabOff));
+  });
+}
+
+function renderCycleDots(){
+  const wrap = el('cycleDots');
+  if(!wrap) return;
+  const n = state.cycleCount % 4;
+  const done = (state.cycleCount > 0 && n === 0) ? 4 : n;
+  wrap.innerHTML = [0,1,2,3].map(i=>
+    `<span class="h-2.5 w-2.5 rounded-full border ${i<done
+      ? 'border-voltdark bg-voltdark dark:border-volt dark:bg-volt'
+      : 'border-black/15 bg-transparent dark:border-white/15'}"></span>`).join('');
+}
+
+function timerHintText(){
+  if(T.mode === 'focus'){
+    const n = state.cycleCount % 4;
+    return `Session ${n+1} of 4 in this cycle — a long break follows the 4th.`;
+  }
+  return T.mode === 'short'
+    ? 'Short breather — hydrate, stretch, breathe.'
+    : 'Long break — you earned it. Recharge fully.';
+}
+
+function buildTicks(){
+  const g = el('timerTicks');
+  if(!g) return;
+  let html = '';
+  for(let i=0;i<60;i++){
+    const a = i*6*Math.PI/180, long = i%5===0;
+    const r1 = long?138:143, r2 = 151;
+    html += `<line x1="${(160+Math.cos(a)*r1).toFixed(1)}" y1="${(160+Math.sin(a)*r1).toFixed(1)}"
+                   x2="${(160+Math.cos(a)*r2).toFixed(1)}" y2="${(160+Math.sin(a)*r2).toFixed(1)}"
+                   stroke-width="${long?2:1}"/>`;
+  }
+  g.innerHTML = html;
+}
+
+/* ============================================================
+   RENDERING
+============================================================ */
+const DASH_C = 2 * Math.PI * 62;
+const setTxt = (id,v)=>{ const n = el(id); if(n) n.textContent = v; };
+
+function renderSideLevel(){
+  const need = xpNeeded(state.level);
+  setTxt('sideLevel', state.level);
+  setTxt('sideXpText', `${fmtNum(state.xp)} / ${fmtNum(need)} XP`);
+  const bar = el('sideLevelBar');
+  if(bar) bar.style.width = Math.min(100, state.xp/need*100) + '%';
+}
+
+function renderDashboard(){
+  const h = new Date().getHours();
+  setTxt('greetText',
+    h<5 ? 'Up late, challenger' : h<12 ? 'Good morning, challenger' :
+    h<18 ? 'Good afternoon, challenger' : 'Good evening, challenger');
+  setTxt('greetDate', new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'}));
+
+  const need = xpNeeded(state.level);
+  const ring = el('dashRing');
+  if(ring) ring.style.strokeDashoffset = String(DASH_C * (1 - Math.min(1, state.xp/need)));
+  setTxt('dashLevel', state.level);
+  setTxt('dashXpText', `${fmtNum(state.xp)} / ${fmtNum(need)} XP`);
+  setTxt('dashNext', `${fmtNum(need - state.xp)} XP to Level ${state.level + 1}`);
+
+  setTxt('dashStreakCur', effectiveStreak());
+  setTxt('dashStreakLong', state.longestStreak);
+
+  const d = state.dailyMap[todayKey()] || { minutes:0, sessions:0 };
+  setTxt('dashTodaySessions', d.sessions);
+  setTxt('heroSessions', d.sessions);
+  setTxt('dashTodayMinutes', d.minutes);
+  setTxt('heroMinutes', d.minutes);
+
+  ensureChallenges();
+  const dc = el('dashChallenges');
+  if(dc){
+    dc.innerHTML = CHALLENGE_DEFS.map(def=>{
+      const c = state.challenges.find(x=>x.id===def.id);
+      const pct = Math.min(100, c.progress/def.target*100);
+      const count = c.claimed ? 'Complete' : `${fmtNum(Math.min(c.progress,def.target))}/${fmtNum(def.target)} ${unitLabel(def)}`;
+      return `
+      <div class="flex items-center gap-3 rounded-xl border border-black/10 bg-paper-800 px-4 py-3 ${c.claimed?'opacity-70':''} dark:border-white/[0.06] dark:bg-night-800">
+        <span class="${c.claimed?C.iconGold:C.iconAcc}"><i data-lucide="${def.icon}" class="h-4 w-4"></i></span>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-baseline justify-between gap-2">
+            <p class="text-sm font-semibold">${def.name}</p>
+            <span class="whitespace-nowrap text-xs tabular-nums ${C.muted}">${count}</span>
+          </div>
+          <div class="mt-1.5 ${C.barTrack}"><div class="${C.barFill(c.claimed)}" style="width:${pct}%"></div></div>
+        </div>
+        <span class="${C.chip(c.claimed)}">${c.claimed?'<i data-lucide="check" class="h-3 w-3"></i>':`+${def.reward} XP`}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const da = el('dashActivity');
+  if(da){
+    const acts = state.activity.slice(0, 6);
+    da.innerHTML = acts.length ? acts.map(activityRow).join('')
+      : `<div class="flex flex-col items-center px-4 py-8 text-center">
+           <i data-lucide="moon-star" class="h-6 w-6 ${C.muted}"></i>
+           <p class="mt-2 text-sm font-semibold">No activity yet</p>
+           <p class="mt-1 max-w-[240px] text-xs ${C.muted}">Complete your first focus session to start your legend.</p>
+         </div>`;
+  }
+  refreshIcons();
+}
+
+function activityRow(a){
+  const m = ACT_META[a.type] || { icon:'info', tone:'acc' };
+  const toneCls = m.tone==='gold'
+    ? 'border-golddark/25 bg-golddark/10 text-golddark dark:border-gold/20 dark:bg-gold/10 dark:text-gold'
+    : 'border-voltdark/25 bg-voltdark/10 text-voltdark dark:border-volt/20 dark:bg-volt/10 dark:text-volt';
+  return `<div class="flex items-start gap-3">
+    <span class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${toneCls}"><i data-lucide="${m.icon}" class="h-3.5 w-3.5"></i></span>
+    <div class="min-w-0">
+      <p class="text-sm font-medium leading-snug">${a.text}</p>
+      <p class="mt-0.5 text-[11px] ${C.muted}">${dayLabel(a.t)} · ${fmtClock(a.t)}</p>
+    </div>
+  </div>`;
+}
+
+function renderTimer(){
+  syncTimerControls();
+  updateTimerFace();
+  setTxt('timerHint', timerHintText());
+}
+
+function renderChallenges(){
+  setTxt('challengesResetNote', `Resets daily · new challenges in ${timeToMidnight()}`);
+  const list = el('challengesList');
+  if(!list) return;
+  list.innerHTML = CHALLENGE_DEFS.map(def=>{
+    const c = state.challenges.find(x=>x.id===def.id);
+    const pct = Math.min(100, c.progress/def.target*100);
+    const count = c.claimed ? 'Complete' : `${fmtNum(Math.min(c.progress,def.target))}/${fmtNum(def.target)} ${unitLabel(def)}`;
+    return `
+    <div class="rounded-2xl border bg-paper-900 p-5 transition md:p-6 ${c.claimed
+      ? 'border-golddark/25 dark:border-gold/20 dark:bg-night-900'
+      : 'border-black/10 dark:border-white/[0.08] dark:bg-night-900'}">
+      <div class="flex items-start gap-4">
+        <span class="flex shrink-0 items-center justify-center rounded-xl ${c.claimed?C.iconGold:C.iconAcc}" style="height:48px;width:48px"><i data-lucide="${def.icon}" class="h-5 w-5"></i></span>
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="font-display text-base font-semibold">${def.name}</p>
+            <span class="${C.chip(c.claimed)}">${c.claimed?'<i data-lucide="check" class="h-3 w-3"></i> Claimed':`+${def.reward} XP`}</span>
+          </div>
+          <p class="mt-0.5 text-sm ${C.muted}">${def.desc}</p>
+          <div class="mt-3 flex items-center gap-3">
+            <div class="flex-1 ${C.barTrack}"><div class="${C.barFill(c.claimed)}" style="width:${pct}%"></div></div>
+            <span class="min-w-[82px] whitespace-nowrap text-right text-xs tabular-nums ${C.muted}">${count}</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  refreshIcons();
+}
+
+function renderGoals(){
+  ensureGoals();
+  checkGoals();
+
+  const ws = weekStart(new Date()), we = new Date(ws); we.setDate(ws.getDate()+6);
+  const md = d => d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  setTxt('weekRange', `${md(ws)} – ${md(we)} · resets Monday`);
+
+  const t = weekTotals();
+  setTxt('wkSessions', fmtNum(t.sessions));
+  setTxt('wkMinutes', fmtNum(t.minutes));
+  setTxt('wkXP', fmtNum(t.xp));
+  const claimedN = state.goals.items.filter(g=>g.claimed).length;
+  setTxt('wkGoalsDone', `${claimedN} / ${state.goals.items.length}`);
+
+  const active = state.goals.items.filter(g=>!g.claimed);
+  const claimed = state.goals.items.filter(g=>g.claimed);
+
+  const ga = el('goalsActive');
+  if(ga){
+    ga.innerHTML = active.length ? active.map(goalCard).join('')
+      : `<div class="flex flex-col items-center rounded-2xl border border-dashed border-black/15 px-4 py-10 text-center dark:border-white/15">
+           <i data-lucide="flag" class="h-6 w-6 ${C.muted}"></i>
+           <p class="mt-2 text-sm font-semibold">No goals yet this week</p>
+           <p class="mt-1 max-w-[260px] text-xs ${C.muted}">Add a quest below — hit the target before Monday and claim your XP bonus.</p>
+         </div>`;
+  }
+
+  const cb = el('claimedBlock'), gc = el('goalsClaimed');
+  if(cb) cb.classList.toggle('hidden', claimed.length === 0);
+  if(gc){
+    gc.innerHTML = claimed.map(g=>{
+      const def = GOAL_TYPES[g.type];
+      return `<div class="flex items-center gap-3 rounded-xl border border-golddark/25 bg-paper-800 px-4 py-2.5 dark:border-gold/20 dark:bg-night-800">
+        <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-golddark/25 bg-golddark/10 text-golddark dark:border-gold/20 dark:bg-gold/10 dark:text-gold"><i data-lucide="check" class="h-3.5 w-3.5"></i></span>
+        <p class="min-w-0 flex-1 truncate text-sm font-medium">${goalTitle(g)}</p>
+        <span class="${C.chip(true)}">+${g.reward} XP</span>
+        <span class="hidden text-[11px] sm:inline ${C.muted}">${def.label}</span>
+      </div>`;
+    }).join('');
+  }
+
+  updateGoalRewardPreview();
+  refreshIcons();
+}
+
+function goalCard(g){
+  const def = GOAL_TYPES[g.type];
+  const prog = Math.min(g.target, goalProgress(g));
+  const pct = Math.min(100, prog/g.target*100);
+  const ready = g.completed && !g.claimed;
+  return `
+  <div class="rounded-2xl border p-5 ${ready
+    ? 'border-golddark/40 bg-paper-800 dark:border-gold/30 dark:bg-night-800'
+    : 'border-black/10 bg-paper-900 dark:border-white/[0.08] dark:bg-night-900'}">
+    <div class="flex items-start gap-4">
+      <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${ready?C.iconGold:C.iconAcc}" style="height:48px;width:48px"><i data-lucide="${def.icon}" class="h-5 w-5"></i></span>
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <p class="font-display text-base font-semibold">${goalTitle(g)}</p>
+          <span class="${C.chip(ready)}">${ready?'Ready to claim':`+${g.reward} XP`}</span>
+        </div>
+        <p class="mt-0.5 text-sm ${C.muted}">${def.hint}</p>
+        <div class="mt-3 flex items-center gap-3">
+          <div class="flex-1 ${C.barTrack}"><div class="${C.barFill(ready)}" style="width:${pct}%"></div></div>
+          <span class="min-w-[92px] whitespace-nowrap text-right text-xs tabular-nums ${C.muted}">${fmtNum(prog)}/${fmtNum(g.target)} ${def.unit}</span>
+        </div>
+      </div>
+      <div class="flex shrink-0 flex-col items-end gap-2">
+        <button data-claim="${g.id}" ${ready?'':'disabled'}
+          class="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 font-display text-xs font-semibold uppercase tracking-wider transition focus-visible:outline-none focus-visible:ring-2 ${ready
+            ? 'bg-golddark text-white hover:brightness-110 focus-visible:ring-golddark/60 dark:bg-gold dark:text-[#231a02] dark:focus-visible:ring-gold/60'
+            : 'cursor-not-allowed border border-black/10 text-[#93A096] dark:border-white/[0.08] dark:text-[#6B756E]'}">
+          <i data-lucide="gift" class="h-3.5 w-3.5"></i>Claim
+        </button>
+        <button data-remove="${g.id}" aria-label="Remove goal"
+          class="flex h-7 w-7 items-center justify-center rounded-lg border border-black/10 text-[#93A096] transition hover:border-rosedark hover:text-rosedark dark:border-white/[0.08] dark:text-[#6B756E] dark:hover:border-rose dark:hover:text-rose">
+          <i data-lucide="x" class="h-3.5 w-3.5"></i>
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderAchievements(){
+  const un = achUnlockedCount();
+  setTxt('achSummary', `${un} / ${ACHIEVEMENTS.length}`);
+  const bar = el('achBar');
+  if(bar) bar.style.width = (un/ACHIEVEMENTS.length*100) + '%';
+  const grid = el('achGrid');
+  if(!grid) return;
+  grid.innerHTML = ACHIEVEMENTS.map(a=>{
+    const rec = state.achievements[a.id];
+    const isUn = !!(rec && rec.unlocked);
+    const boxCls = isUn
+      ? 'border-golddark/30 bg-golddark/10 text-golddark dark:border-gold/25 dark:bg-gold/10 dark:text-gold'
+      : 'border-black/10 bg-paper-800 text-[#93A096] dark:border-white/[0.08] dark:bg-night-800 dark:text-[#6B756E]';
+    return `
+    <div class="flex items-start gap-4 rounded-2xl border p-4 md:p-5 ${isUn
+      ? 'border-golddark/30 bg-paper-800 dark:border-gold/20 dark:bg-night-800'
+      : 'border-black/10 bg-paper-900 dark:border-white/[0.08] dark:bg-night-900'}">
+      <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${boxCls}"><i data-lucide="${a.icon}" class="h-5 w-5"></i></span>
+      <div class="min-w-0 flex-1">
+        <p class="font-display text-sm font-semibold ${isUn?'text-golddark dark:text-gold':''}">${a.name}</p>
+        <p class="mt-0.5 text-xs ${C.muted}">${a.desc}</p>
+        ${isUn
+          ? `<span class="mt-1.5 block text-[11px] text-golddark dark:text-gold">Unlocked ${dayLabel(rec.date)} · ${fmtClock(rec.date)}</span>`
+          : `<div class="mt-2 ${C.barTrack}"><div class="${C.barDim}" style="width:${a.pct(state)}%"></div></div>
+             <span class="mt-1 block text-[11px] tabular-nums ${C.muted}">${a.label(state)}</span>`}
+      </div>
+      <span class="shrink-0 whitespace-nowrap rounded-md border px-2 py-1 font-display text-[10px] font-semibold uppercase tracking-[0.14em] ${isUn
+        ? 'border-golddark/30 text-golddark dark:border-gold/25 dark:text-gold'
+        : 'border-black/10 text-[#93A096] dark:border-white/[0.08] dark:text-[#6B756E]'}">${isUn?'Unlocked':'Locked'}</span>
+    </div>`;
+  }).join('');
+  refreshIcons();
+}
+
+function renderStats(){
+  setTxt('statSessions', fmtNum(state.totalSessions));
+  setTxt('statMinutes', fmtNum(state.totalMinutes));
+  setTxt('statXP', fmtNum(state.totalXP));
+  setTxt('statLevel', state.level);
+  setTxt('statStreakCur', effectiveStreak());
+  setTxt('statStreakLong', state.longestStreak);
+  setTxt('statAch', `${achUnlockedCount()} / ${ACHIEVEMENTS.length}`);
+
+  const chart = el('chartBars');
+  if(chart){
+    const days = [];
+    for(let i=6;i>=0;i--){
+      const dt = new Date(); dt.setDate(dt.getDate()-i);
+      const k = dateKey(dt);
+      days.push({ k, label: i===0?'Today':dt.toLocaleDateString('en-US',{weekday:'short'}),
+                  m:(state.dailyMap[k]||{minutes:0}).minutes });
+    }
+    const max = Math.max(30, ...days.map(d=>d.m));
+    chart.innerHTML = days.map(d=>{
+      const h = d.m===0 ? 3 : Math.max(6, Math.round(d.m/max*132));
+      const today = d.k===todayKey();
+      return `<div class="flex flex-col items-center gap-1.5">
+        <span class="text-[11px] tabular-nums ${today?'font-bold text-voltdark dark:text-volt':C.muted}">${d.m>0?d.m:'–'}</span>
+        <div class="flex h-32 w-full max-w-[38px] items-end overflow-hidden rounded-lg bg-black/[0.06] dark:bg-white/[0.06]">
+          <div class="w-full rounded-t-lg transition-all duration-500 ${today?'bg-voltdark dark:bg-volt':'bg-voltdark/40 dark:bg-volt/40'}" style="height:${h}px"></div>
+        </div>
+        <span class="text-[11px] ${C.muted}">${d.label}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const hl = el('historyList');
+  if(hl){
+    const hist = state.history.slice(0, 10);
+    hl.innerHTML = hist.length ? hist.map(h=>`
+      <div class="flex items-center gap-3 border-b border-black/[0.07] py-3 last:border-0 dark:border-white/[0.06]">
+        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-black/10 bg-paper-800 ${C.muted} dark:border-white/[0.08] dark:bg-night-800"><i data-lucide="timer" class="h-4 w-4"></i></span>
+        <p class="flex-1 text-sm font-medium">Focus — ${h.minutes} min</p>
+        <div class="text-right">
+          <p class="text-sm font-semibold tabular-nums text-voltdark dark:text-volt">+${h.xp} XP</p>
+          <p class="text-[11px] ${C.muted}">${dayLabel(h.t)} · ${fmtClock(h.t)}</p>
+        </div>
+      </div>`).join('')
+      : `<div class="flex flex-col items-center px-4 py-8 text-center">
+           <i data-lucide="timer" class="h-6 w-6 ${C.muted}"></i>
+           <p class="mt-2 text-sm font-semibold">No sessions yet</p>
+           <p class="mt-1 max-w-[240px] text-xs ${C.muted}">Your completed focus sessions will appear here.</p>
+         </div>`;
+  }
+  refreshIcons();
+}
+
+function renderSettings(){
+  const setVal = (id,v)=>{ const n = el(id); if(n) n.value = v; };
+  setVal('inFocus', state.settings.focus);
+  setVal('inShort', state.settings.short);
+  setVal('inLong', state.settings.long);
+  const st = el('soundToggle');
+  if(st) st.checked = state.settings.sound;
+  syncThemeButtons();
+}
+
+function renderAll(){
+  ensureChallenges();
+  ensureGoals();
+  renderSideLevel();
+  renderDashboard();
+  renderTimer();
+  renderChallenges();
+  renderGoals();
+  renderAchievements();
+  renderStats();
+  renderSettings();
+  refreshIcons();
+}
+
+/* ============================================================
+   NAV / THEME / MODALS
+============================================================ */
+function showView(name){
+  document.querySelectorAll('main > section[id^="view-"]').forEach(v=>{
+    const on = v.id === 'view-'+name;
+    v.classList.toggle('hidden', !on);
+    if(on){ v.classList.remove('animate-viewIn'); void v.offsetWidth; v.classList.add('animate-viewIn'); }
+  });
+  document.querySelectorAll('.nav-item').forEach(n=>{
+    const on = n.dataset.view === name;
+    n.classList.remove(...C.navOn, ...C.navOff);
+    n.classList.add(...(on ? C.navOn : C.navOff));
+    const ind = n.querySelector('.nav-ind');
+    if(ind) ind.classList.toggle('hidden', !on);
+  });
+  setTxt('topbarTitle', VIEW_TITLES[name] || name);
+  closeSidebar();
+  window.scrollTo({ top:0 });
+  renderAll();
+}
+
+function openSidebar(){
+  const s = el('sidebar'), ov = el('sidebarOverlay');
+  if(s){ s.classList.remove('-translate-x-full'); s.classList.add('translate-x-0'); }
+  if(ov){ ov.classList.remove('opacity-0','pointer-events-none'); ov.classList.add('opacity-100'); }
+}
+function closeSidebar(){
+  const s = el('sidebar'), ov = el('sidebarOverlay');
+  if(s && window.innerWidth < 1024){
+    s.classList.add('-translate-x-full');
+    s.classList.remove('translate-x-0');
+  }
+  if(ov){ ov.classList.add('opacity-0','pointer-events-none'); ov.classList.remove('opacity-100'); }
+}
+
+function applyTheme(){
+  document.documentElement.classList.toggle('dark', state.settings.theme==='dark');
+  syncThemeButtons();
+}
+function syncThemeButtons(){
+  const t = state.settings.theme;
+  [['themeDark','dark'],['themeLight','light']].forEach(([id,val])=>{
+    const b = el(id);
+    if(!b) return;
+    b.classList.remove(...C.segOn, ...C.segOff);
+    b.classList.add(...(t===val ? C.segOn : C.segOff));
+  });
+  updateToggleBtn('themeToggleSide');
+  updateToggleBtn('themeToggleTop');
+}
+function updateToggleBtn(id){
+  const b = el(id);
+  if(!b) return;
+  b.innerHTML = `<i data-lucide="${state.settings.theme==='dark'?'sun':'moon'}" class="h-4 w-4"></i>`;
+  refreshIcons();
+}
+function setTheme(t){
+  state.settings.theme = t;
+  save();
+  applyTheme();
+  toast(`${t==='dark'?'Dark':'Light'} mode enabled`, t==='dark'?'moon':'sun');
+}
+
+function showLevelModal(){
+  setTxt('levelNum', state.level);
+  setTxt('levelXpNote', `${fmtNum(state.xp)} / ${fmtNum(xpNeeded(state.level))} XP toward Level ${state.level+1}`);
+
+  const sh = el('levelShards');
+  if(sh){
+    sh.innerHTML = '';
+    for(let i=0;i<16;i++){
+      const s = document.createElement('span');
+      s.className = `absolute h-4 w-[5px] animate-shardFly rounded-full motion-reduce:animate-none ${i%2?'bg-golddark dark:bg-gold':'bg-voltdark dark:bg-volt'}`;
+      const a = Math.random()*Math.PI*2, dist = 95 + Math.random()*115;
+      s.style.setProperty('--tx', Math.cos(a)*dist+'px');
+      s.style.setProperty('--ty', Math.sin(a)*dist+'px');
+      s.style.setProperty('--rd', Math.round(Math.random()*360)+'deg');
+      s.style.animationDelay = (Math.random()*0.15)+'s';
+      sh.appendChild(s);
+    }
+  }
+  const ring = el('levelRing');
+  if(ring){
+    ring.classList.remove('animate-levelSweep');
+    void ring.getBoundingClientRect();
+    ring.classList.add('animate-levelSweep');
+  }
+
+  const m = el('levelModal');
+  if(m){ m.classList.remove('hidden'); m.classList.add('flex'); }
+  refreshIcons();
+}
+function hideLevelModal(){
+  const m = el('levelModal');
+  if(m){ m.classList.add('hidden'); m.classList.remove('flex'); }
+}
+function maybeCelebrate(){
+  if(!pendingLevelUp) return;
+  pendingLevelUp = false;
+  chime('focus');
+  showLevelModal();
+}
+
+let confirmCb = null;
+function showConfirm(o){
+  setTxt('confirmTitle', o.title);
+  setTxt('confirmDesc', o.desc);
+  setTxt('confirmOk', o.label || 'Confirm');
+  confirmCb = o.onConfirm;
+  const m = el('confirmModal');
+  if(m){ m.classList.remove('hidden'); m.classList.add('flex'); }
+  refreshIcons();
+}
+function hideConfirm(){
+  const m = el('confirmModal');
+  if(m){ m.classList.add('hidden'); m.classList.remove('flex'); }
+  confirmCb = null;
+}
+
+/* ============================================================
+   SETTINGS
+============================================================ */
+const RANGES = { focus:[5,120], short:[1,30], long:[5,60] };
+
+function setDuration(k, val){
+  const [min,max] = RANGES[k];
+  let v = Math.round(Number(val));
+  if(!isFinite(v)) v = state.settings[k];
+  v = Math.min(max, Math.max(min, v));
+  state.settings[k] = v;
+  save();
+  const input = el('in'+cap(k));
+  if(input) input.value = v;
+  if(!T.running && T.mode === k){ T.total = T.remaining = v*60000; }
+  renderTimer();
+}
+
+function resetAllData(){
+  try{ localStorage.removeItem(STORE_KEY); }catch(e){}
+  state = defaultState();
+  pendingLevelUp = false;
+  stopInterval();
+  T.running = false;
+  ensureChallenges();
+  ensureGoals();
+  applyTheme();
+  setMode('focus');
+  document.title = 'FocusBattle';
+  showView('dashboard');
+  toast('All data has been reset', 'trash-2');
+}
+
+/* ============================================================
+   WIRING & INIT
+============================================================ */
+function wire(){
+  const on = (id, ev, fn) => { const n = el(id); if(n) n.addEventListener(ev, fn); };
+
+  document.querySelectorAll('.nav-item').forEach(n =>
+    n.addEventListener('click', ()=>showView(n.dataset.view)));
+  document.querySelectorAll('[data-goto]').forEach(b =>
+    b.addEventListener('click', ()=>showView(b.dataset.goto)));
+  on('menuBtn', 'click', openSidebar);
+  on('sbClose', 'click', closeSidebar);
+  on('sidebarOverlay', 'click', closeSidebar);
+
+  on('themeToggleSide', 'click', ()=>setTheme(state.settings.theme==='dark'?'light':'dark'));
+  on('themeToggleTop',  'click', ()=>setTheme(state.settings.theme==='dark'?'light':'dark'));
+  on('themeDark', 'click', ()=>setTheme('dark'));
+  on('themeLight','click', ()=>setTheme('light'));
+
+  on('btnStartStop', 'click', ()=> T.running ? pauseTimer() : startTimer());
+  on('btnReset', 'click', resetTimer);
+  document.querySelectorAll('.mode-tab').forEach(b =>
+    b.addEventListener('click', ()=>{
+      const m = b.dataset.mode;
+      if(m === T.mode && !T.running) return;
+      if(T.running){
+        stopInterval(); T.running = false; document.title = 'FocusBattle';
+        if(T.mode === 'focus' && T.remaining < T.total)
+          toast('Timer stopped — incomplete sessions earn no XP', 'info');
+      }
+      setMode(m);
+    }));
+
+  on('btnDashStart', 'click', ()=>{
+    showView('timer');
+    if(T.mode !== 'focus') setMode('focus');
+    if(!T.running) startTimer();
+  });
+
+  on('goalType', 'change', updateGoalRewardPreview);
+  on('goalTarget', 'input', e=>{
+    e.target.value = e.target.value.replace(/[^0-9]/g,'').slice(0,5);
+    updateGoalRewardPreview();
+  });
+  on('btnAddGoal', 'click', addGoalFromForm);
+  on('goalsWrap', 'click', e=>{
+    const claim = e.target.closest('[data-claim]');
+    if(claim){ claimGoal(claim.dataset.claim); return; }
+    const rm = e.target.closest('[data-remove]');
+    if(rm) removeGoal(rm.dataset.remove);
+  });
+
+  [['inFocus','focus'],['inShort','short'],['inLong','long']].forEach(([id,k])=>{
+    const input = el(id);
+    if(!input) return;
+    input.addEventListener('input', e=>{ e.target.value = e.target.value.replace(/[^0-9]/g,'').slice(0,3); });
+    input.addEventListener('change', e=>setDuration(k, e.target.value));
+  });
+  document.querySelectorAll('.step-btn').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const k = b.dataset.target, d = parseInt(b.dataset.delta,10);
+      const input = el('in'+cap(k));
+      const cur = parseInt(input.value,10);
+      setDuration(k, (isNaN(cur) ? state.settings[k] : cur) + d);
+    });
+  });
+
+  on('soundToggle', 'change', e=>{
+    state.settings.sound = e.target.checked;
+    save();
+    toast(e.target.checked ? 'Sounds on' : 'Sounds off', e.target.checked?'volume-2':'volume-x');
+  });
+
+  on('btnResetData', 'click', ()=>showConfirm({
+    title:'Reset all data?',
+    desc:'This permanently deletes your level, XP, streaks, challenges, goals, achievements, session history and settings from this browser. This cannot be undone.',
+    label:'Delete everything',
+    onConfirm: resetAllData
+  }));
+
+  on('confirmOk', 'click', ()=>{ const cb = confirmCb; hideConfirm(); if(cb) cb(); });
+  on('confirmCancel', 'click', hideConfirm);
+  on('confirmModal', 'click', e=>{ if(e.target.id==='confirmModal') hideConfirm(); });
+  on('btnLevelContinue', 'click', hideLevelModal);
+  on('levelModal', 'click', e=>{ if(e.target.id==='levelModal') hideLevelModal(); });
+
+  document.addEventListener('keydown', e=>{
+    if(e.key !== 'Escape') return;
+    const cm = el('confirmModal'), lm = el('levelModal');
+    if(cm && !cm.classList.contains('hidden')) hideConfirm();
+    else if(lm && !lm.classList.contains('hidden')) hideLevelModal();
+    else closeSidebar();
+  });
+
+  document.addEventListener('visibilitychange', ()=>{
+    if(!document.hidden && T.running) tick();
+  });
+}
+
+function init(){
+  buildTicks();
+  ensureChallenges();
+  ensureGoals();
+  applyTheme();
+  wire();
+  setMode('focus');
+  showView('dashboard');
+}
+
+try{ init(); }
+catch(err){ console.error('FocusBattle failed to start:', err); }
+})();
 </script>
 
 </body>
